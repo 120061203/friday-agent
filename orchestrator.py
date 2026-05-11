@@ -1,19 +1,77 @@
 import asyncio
+import math
 from typing import Callable
 import anthropic
 from tools.web_search import web_search as _web_search
 from tools.current_time import get_current_time as _get_current_time
+from tools.profile_manager import read_profile, update_profile as _update_profile
+from agents.event_planner import event_planner_prompt
+from agents.food_advisor import food_advisor_prompt
+from agents.local_scout import local_scout_prompt
+from agents.researcher import researcher_prompt
+from agents.coder import coder_prompt
+from agents.critic import critic_prompt
 
 client = anthropic.Anthropic()
+
+FRIDAY_SYSTEM_PROMPT = """你是 Friday，一個專為享受美好生活設計的 AI 個人助理。
+
+你了解使用者的偏好（記錄在下方 profile），能夠：
+- 推薦台北、台中、高雄、日本、英國的熱門活動與展覽
+- 推薦附近符合口味的餐廳
+- 規劃週五下班後到週日晚的完整行程
+- 安排一週便當料理
+- 查詢最新電影與在地活動
+
+回覆請使用 Markdown 格式，讓內容清晰易讀。
+遇到需要查詢最新資訊的任務，優先使用 web_search。
+遇到複雜的規劃任務，呼叫對應的專門 agent。
+
+---
+
+## 使用者偏好
+{profile}
+
+---
+
+## 今天是
+{current_time}
+"""
 
 tools = [
     {
         "name": "web_search",
-        "description": "搜尋網路資訊",
+        "description": "搜尋網路上的最新資訊，包含活動、餐廳、電影等",
         "input_schema": {
             "type": "object",
             "properties": {"query": {"type": "string"}},
             "required": ["query"]
+        }
+    },
+    {
+        "name": "get_current_time",
+        "description": "取得目前的日期與時間",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "timezone": {
+                    "type": "string",
+                    "description": "時區，例如 Asia/Taipei，預設為 Asia/Taipei"
+                }
+            },
+            "required": []
+        }
+    },
+    {
+        "name": "update_profile",
+        "description": "更新使用者偏好檔案中的特定欄位，例如記錄歷史查詢",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "key": {"type": "string", "description": "欄位名稱，例如「上次查詢活動」"},
+                "value": {"type": "string", "description": "新的值"}
+            },
+            "required": ["key", "value"]
         }
     },
     {
@@ -26,20 +84,6 @@ tools = [
         }
     },
     {
-        "name": "get_current_time",
-        "description": "取得目前的日期與時間",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "timezone": {
-                    "type": "string",
-                    "description": "時區，例如 Asia/Taipei、UTC、America/New_York，預設為 Asia/Taipei"
-                }
-            },
-            "required": []
-        }
-    },
-    {
         "name": "call_agent",
         "description": "呼叫專門的 sub-agent 處理特定任務",
         "input_schema": {
@@ -47,22 +91,40 @@ tools = [
             "properties": {
                 "agent_name": {
                     "type": "string",
-                    "enum": ["researcher", "coder", "critic"]
+                    "enum": ["event_planner", "food_advisor", "local_scout", "researcher", "coder", "critic"]
                 },
-                "task": {"type": "string"}
+                "task": {"type": "string", "description": "交給 sub-agent 的完整任務描述，包含相關 context"}
             },
             "required": ["agent_name", "task"]
         }
     }
 ]
 
+AGENT_PROMPTS = {
+    "event_planner": event_planner_prompt,
+    "food_advisor": food_advisor_prompt,
+    "local_scout": local_scout_prompt,
+    "researcher": researcher_prompt,
+    "coder": coder_prompt,
+    "critic": critic_prompt,
+}
+
+
+async def build_system_prompt() -> str:
+    profile = await read_profile()
+    current_time = await _get_current_time("Asia/Taipei")
+    return FRIDAY_SYSTEM_PROMPT.format(profile=profile, current_time=current_time)
+
 
 async def run_agent(
     task: str,
     emit: Callable,
-    system_prompt: str = "你是一個有用的 AI 助理。",
+    system_prompt: str | None = None,
     agent_name: str = "orchestrator"
 ):
+    if system_prompt is None:
+        system_prompt = await build_system_prompt()
+
     messages = [{"role": "user", "content": task}]
 
     while True:
@@ -71,13 +133,12 @@ async def run_agent(
 
         with client.messages.stream(
             model="claude-sonnet-4-20250514",
-            max_tokens=4096,
+            max_tokens=8096,
             system=system_prompt,
             thinking={"type": "enabled", "budget_tokens": 2000},
             tools=tools,
             messages=messages
         ) as stream:
-            # 串流期間只發 thinking 事件（input 還不完整）
             for block in stream:
                 if block.type == "content_block_start":
                     cb = block.content_block
@@ -87,7 +148,6 @@ async def run_agent(
                             "text": cb.thinking
                         })
 
-            # 串流結束後取完整 blocks（input 已完整解析）
             final_message = stream.get_final_message()
             for cb in final_message.content:
                 if cb.type == "tool_use":
@@ -100,10 +160,9 @@ async def run_agent(
                     tool_uses.append(cb)
                 response_blocks.append(cb)
 
-        # 執行所有 tool calls
         tool_results = []
         for tool_use in tool_uses:
-            result = await dispatch_tool(tool_use.name, tool_use.input, emit, agent_name)
+            result = await dispatch_tool(tool_use.name, tool_use.input, emit, agent_name, system_prompt)
             await emit("tool_result", {
                 "agent": agent_name,
                 "name": tool_use.name,
@@ -116,67 +175,64 @@ async def run_agent(
                 "content": str(result)
             })
 
-        # 沒有 tool_use → agent 認為任務完成，跳出迴圈
         if not tool_uses:
             final_text = next(
                 (b.text for b in response_blocks if hasattr(b, "text")), ""
             )
             return final_text
 
-        # 把結果塞回 messages，繼續下一輪
         messages.append({"role": "assistant", "content": response_blocks})
         messages.append({"role": "user", "content": tool_results})
 
 
-async def dispatch_tool(name: str, input: dict, emit, agent_name: str):
+async def dispatch_tool(name: str, input: dict, emit, agent_name: str, parent_system_prompt: str):
     if name == "web_search":
-        return await tool_web_search(input["query"])
+        return await _web_search(input["query"])
 
     elif name == "get_current_time":
         return await _get_current_time(input.get("timezone", "Asia/Taipei"))
 
+    elif name == "update_profile":
+        return await _update_profile(input["key"], input["value"])
+
     elif name == "calculator":
-        return await tool_calculator(input["expression"])
+        try:
+            allowed = {"__builtins__": {}}
+            allowed.update({k: getattr(math, k) for k in dir(math) if not k.startswith("_")})
+            return str(eval(input["expression"], allowed))
+        except Exception as e:
+            return f"計算錯誤：{e}"
 
     elif name == "call_agent":
         return await tool_call_agent(
             input["agent_name"],
             input["task"],
-            emit
+            emit,
+            parent_system_prompt
         )
 
     return f"未知的 tool: {name}"
 
 
-async def tool_web_search(query: str) -> str:
-    return await _web_search(query)
+async def tool_call_agent(agent_name: str, task: str, emit, parent_system_prompt: str) -> str:
+    base_prompt = AGENT_PROMPTS.get(agent_name)
 
-
-async def tool_calculator(expression: str) -> str:
-    try:
-        # 只允許安全的數學運算
-        allowed_names = {"__builtins__": {}}
-        import math
-        allowed_names.update({k: getattr(math, k) for k in dir(math) if not k.startswith("_")})
-        result = eval(expression, allowed_names)
-        return str(result)
-    except Exception as e:
-        return f"計算錯誤：{e}"
-
-
-async def tool_call_agent(agent_name: str, task: str, emit) -> str:
-    system_prompts = {
-        "researcher": "你是研究員，專門搜尋並整理資訊，給出有條理的摘要。",
-        "coder": "你是工程師，專門撰寫並解釋程式碼。",
-        "critic": "你是審查員，專門找出問題與改進空間，提供建設性回饋。"
-    }
+    if base_prompt:
+        # 在 agent prompt 後面附加 profile context
+        profile_section = "\n---\n" + "\n".join(
+            line for line in parent_system_prompt.split("\n")
+            if "使用者偏好" in line or line.startswith("- ") or line.startswith("## ")
+        )
+        system_prompt = base_prompt + profile_section
+    else:
+        system_prompt = "你是 Friday Agent 的助理。"
 
     await emit("agent_start", {"name": agent_name, "task": task})
 
     result = await run_agent(
         task=task,
         emit=emit,
-        system_prompt=system_prompts.get(agent_name, "你是 AI 助理。"),
+        system_prompt=system_prompt,
         agent_name=agent_name
     )
 

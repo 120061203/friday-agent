@@ -2,73 +2,351 @@
 <html lang="zh-TW">
 <head>
   <meta charset="UTF-8">
-  <title>Agent Demo</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Friday Agent</title>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <style>
-    body { font-family: system-ui; max-width: 900px; margin: 2rem auto; padding: 0 1rem; }
-    #input-area { display: flex; gap: 8px; margin-bottom: 1.5rem; }
-    #task-input { flex: 1; padding: 8px 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 15px; }
-    button { padding: 8px 16px; background: #5b4fbe; color: white; border: none; border-radius: 8px; cursor: pointer; }
-    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
 
-    .panel { border: 1px solid #eee; border-radius: 10px; padding: 1rem; margin-bottom: 1rem; }
-    .panel h3 { margin: 0 0 8px; font-size: 13px; color: #888; text-transform: uppercase; letter-spacing: .05em; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      min-height: 100vh;
+    }
 
-    .thinking-block { background: #f5f3ff; border-left: 3px solid #7c6fcd; padding: 8px 12px; border-radius: 4px; margin-bottom: 8px; font-size: 13px; color: #444; white-space: pre-wrap; }
-    .thinking-block .agent-label { font-weight: 600; color: #7c6fcd; margin-bottom: 4px; font-size: 11px; text-transform: uppercase; }
+    /* Header */
+    header {
+      background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+      border-bottom: 1px solid #334155;
+      padding: 1rem 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .logo { display: flex; align-items: center; gap: 10px; }
+    .logo-icon { font-size: 24px; }
+    .logo h1 { font-size: 20px; font-weight: 700; color: #f8fafc; letter-spacing: -0.02em; }
+    .logo span { font-size: 12px; color: #64748b; }
+    .profile-btn {
+      background: #1e293b;
+      border: 1px solid #334155;
+      color: #94a3b8;
+      padding: 6px 14px;
+      border-radius: 8px;
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .profile-btn:hover { border-color: #f59e0b; color: #f59e0b; }
 
-    .tool-card { border: 1px solid #e5e7eb; border-radius: 8px; padding: 10px 14px; margin-bottom: 8px; font-size: 13px; }
-    .tool-card .tool-name { font-weight: 600; color: #0f766e; margin-bottom: 4px; }
-    .tool-card .tool-agent { font-size: 11px; color: #9ca3af; margin-bottom: 4px; }
-    .tool-card .tool-input { color: #666; margin-bottom: 4px; font-family: monospace; font-size: 12px; }
-    .tool-card .tool-result { color: #16a34a; border-top: 1px solid #f0fdf4; padding-top: 6px; margin-top: 6px; white-space: pre-wrap; }
+    /* Main layout */
+    .container { max-width: 1100px; margin: 0 auto; padding: 2rem 1.5rem; }
 
-    .agent-node { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 12px; margin: 4px; background: #f3f4f6; border: 1px solid #e5e7eb; transition: all 0.3s; }
-    .agent-node.active { background: #fef3c7; border-color: #f59e0b; color: #92400e; }
-    .agent-node.done { background: #d1fae5; border-color: #10b981; color: #065f46; }
+    /* Quick actions */
+    .quick-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 1.25rem;
+    }
+    .qa-btn {
+      background: #1e293b;
+      border: 1px solid #334155;
+      color: #94a3b8;
+      padding: 7px 14px;
+      border-radius: 20px;
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+    .qa-btn:hover { border-color: #f59e0b; color: #f59e0b; }
 
-    .error-msg { color: #dc2626; background: #fef2f2; border: 1px solid #fca5a5; border-radius: 8px; padding: 10px 14px; font-size: 14px; }
+    /* Input area */
+    .input-area { display: flex; gap: 10px; margin-bottom: 1.5rem; }
+    #task-input {
+      flex: 1;
+      background: #1e293b;
+      border: 1px solid #334155;
+      color: #f1f5f9;
+      padding: 10px 16px;
+      border-radius: 10px;
+      font-size: 15px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    #task-input:focus { border-color: #f59e0b; }
+    #task-input::placeholder { color: #475569; }
+    #run-btn {
+      background: #f59e0b;
+      color: #0f172a;
+      border: none;
+      padding: 10px 22px;
+      border-radius: 10px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    #run-btn:hover { background: #fbbf24; }
+    #run-btn:disabled { background: #334155; color: #64748b; cursor: not-allowed; }
+
+    /* Two-column layout */
+    .main-layout {
+      display: grid;
+      grid-template-columns: 300px 1fr;
+      gap: 1.25rem;
+      align-items: start;
+    }
+    .sidebar { display: flex; flex-direction: column; gap: 1rem; }
+
+    /* Panels */
+    .panel { background: #1e293b; border: 1px solid #334155; border-radius: 12px; overflow: hidden; }
+    .panel-header {
+      padding: 10px 14px;
+      border-bottom: 1px solid #334155;
+    }
+    .panel-header h3 {
+      font-size: 11px;
+      font-weight: 600;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+    }
+    .panel-body { padding: 12px 14px; }
+    .panel-body.scrollable { max-height: 260px; overflow-y: auto; }
+
+    /* Agent nodes */
+    .agent-grid { display: flex; flex-wrap: wrap; gap: 6px; padding: 12px 14px; }
+    .agent-node {
+      padding: 4px 12px;
+      border-radius: 16px;
+      font-size: 12px;
+      background: #0f172a;
+      border: 1px solid #334155;
+      color: #64748b;
+      transition: all 0.3s;
+    }
+    .agent-node.active { background: #451a03; border-color: #f59e0b; color: #fbbf24; }
+    .agent-node.done { background: #052e16; border-color: #10b981; color: #34d399; }
+
+    /* Thinking */
+    .thinking-block {
+      background: #0f172a;
+      border-left: 3px solid #7c3aed;
+      padding: 8px 10px;
+      border-radius: 4px;
+      margin-bottom: 8px;
+      font-size: 12px;
+      color: #94a3b8;
+      white-space: pre-wrap;
+      line-height: 1.5;
+    }
+    .thinking-block .agent-label {
+      font-size: 10px;
+      font-weight: 700;
+      color: #7c3aed;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      margin-bottom: 4px;
+    }
+
+    /* Tool cards */
+    .tool-card {
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 10px 12px;
+      margin-bottom: 8px;
+      font-size: 12px;
+    }
+    .tool-card .tool-agent { font-size: 10px; color: #475569; margin-bottom: 3px; }
+    .tool-card .tool-name { font-weight: 600; color: #06b6d4; margin-bottom: 5px; font-size: 13px; }
+    .tool-card .tool-input { color: #64748b; font-family: monospace; font-size: 11px; word-break: break-word; }
+    .tool-card .tool-result {
+      color: #4ade80;
+      border-top: 1px solid #1e293b;
+      padding-top: 6px;
+      margin-top: 6px;
+      font-size: 11px;
+      max-height: 100px;
+      overflow-y: auto;
+    }
+
+    /* Result */
+    .result-content { font-size: 14px; line-height: 1.7; color: #e2e8f0; min-height: 120px; }
+    .result-content.empty { color: #475569; font-style: italic; }
+    .result-content h1, .result-content h2 { color: #f8fafc; margin: 1em 0 0.5em; font-size: 1.15em; border-bottom: 1px solid #334155; padding-bottom: 4px; }
+    .result-content h3 { color: #cbd5e1; margin: 0.8em 0 0.4em; font-size: 1em; }
+    .result-content p { margin-bottom: 0.6em; }
+    .result-content ul, .result-content ol { padding-left: 1.5em; margin-bottom: 0.6em; }
+    .result-content li { margin-bottom: 0.3em; }
+    .result-content strong { color: #fbbf24; }
+    .result-content a { color: #38bdf8; }
+    .result-content table { border-collapse: collapse; width: 100%; margin: 0.8em 0; font-size: 13px; }
+    .result-content th { background: #0f172a; color: #94a3b8; padding: 6px 10px; text-align: left; border: 1px solid #334155; }
+    .result-content td { padding: 5px 10px; border: 1px solid #1e293b; }
+    .result-content tr:nth-child(even) td { background: #0f172a; }
+    .result-content code { background: #0f172a; padding: 1px 5px; border-radius: 3px; font-size: 12px; color: #f472b6; }
+    .result-content pre { background: #0f172a; padding: 10px; border-radius: 6px; overflow-x: auto; margin: 0.6em 0; }
+    .result-content blockquote { border-left: 3px solid #f59e0b; padding-left: 10px; color: #94a3b8; margin: 0.6em 0; }
+    .result-content hr { border: none; border-top: 1px solid #334155; margin: 1em 0; }
+
+    /* Error */
+    .error-msg { color: #f87171; background: #450a0a; border: 1px solid #7f1d1d; border-radius: 8px; padding: 10px 14px; font-size: 13px; }
+
+    /* Profile Modal */
+    .modal-overlay {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.75);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 14px;
+      width: 620px;
+      max-width: 95vw;
+      max-height: 85vh;
+      display: flex;
+      flex-direction: column;
+    }
+    .modal-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid #334155;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .modal-header h2 { font-size: 15px; color: #f1f5f9; }
+    .modal-close { background: none; border: none; color: #64748b; font-size: 22px; cursor: pointer; line-height: 1; }
+    .modal-close:hover { color: #f1f5f9; }
+    #profile-editor {
+      flex: 1;
+      background: #0f172a;
+      color: #e2e8f0;
+      border: none;
+      padding: 16px 20px;
+      font-family: monospace;
+      font-size: 13px;
+      line-height: 1.6;
+      resize: none;
+      outline: none;
+      min-height: 400px;
+    }
+    .modal-footer {
+      padding: 12px 20px;
+      border-top: 1px solid #334155;
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+    }
+    .btn-secondary { background: #0f172a; border: 1px solid #334155; color: #94a3b8; padding: 7px 16px; border-radius: 8px; font-size: 13px; cursor: pointer; }
+    .btn-primary { background: #f59e0b; border: none; color: #0f172a; padding: 7px 16px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; }
+
+    @media (max-width: 768px) {
+      .main-layout { grid-template-columns: 1fr; }
+    }
   </style>
 </head>
 <body>
 
-<h2>Agent 決策視覺化</h2>
+<header>
+  <div class="logo">
+    <span class="logo-icon">🌅</span>
+    <div>
+      <h1>Friday Agent</h1>
+      <span>你的美好生活助理</span>
+    </div>
+  </div>
+  <button class="profile-btn" onclick="openProfile()">偏好設定</button>
+</header>
 
-<div id="input-area">
-  <input id="task-input" placeholder="輸入任務，例如：查詢台灣 AI 新創公司並整理摘要" />
-  <button id="run-btn" onclick="runAgent()">執行</button>
-</div>
+<div class="container">
 
-<!-- Agent 狀態 -->
-<div class="panel">
-  <h3>Agents</h3>
-  <div id="agent-graph">
-    <span class="agent-node" id="node-orchestrator">orchestrator</span>
-    <span class="agent-node" id="node-researcher">researcher</span>
-    <span class="agent-node" id="node-coder">coder</span>
-    <span class="agent-node" id="node-critic">critic</span>
+  <div class="quick-actions">
+    <button class="qa-btn" onclick="setTask('幫我規劃這週五下班後到週日晚的活動行程，根據我的偏好推薦')">🗓 週末行程</button>
+    <button class="qa-btn" onclick="setTask('推薦我台北附近符合我口味的餐廳，給我 5 間推薦')">🍽 附近餐廳</button>
+    <button class="qa-btn" onclick="setTask('幫我規劃下週一到週五的便當料理，符合我的飲食偏好，附採購清單')">🥡 本週便當</button>
+    <button class="qa-btn" onclick="setTask('查詢台北本週末有哪些展覽、音樂演出或市集活動')">🏙 台北活動</button>
+    <button class="qa-btn" onclick="setTask('查詢台中本週末有哪些值得去的展覽或活動')">🌆 台中活動</button>
+    <button class="qa-btn" onclick="setTask('查詢高雄本週末有哪些值得去的展覽或活動')">🌇 高雄活動</button>
+    <button class="qa-btn" onclick="setTask('查詢東京近期有哪些值得去的展覽、活動或體驗，用中文回答')">🗼 東京活動</button>
+    <button class="qa-btn" onclick="setTask('查詢倫敦近期有哪些值得去的展覽、活動或體驗，用中文回答')">🎡 倫敦活動</button>
+    <button class="qa-btn" onclick="setTask('查詢本週台灣有哪些值得看的電影，根據我的口味推薦')">🎬 電影推薦</button>
+  </div>
+
+  <div class="input-area">
+    <input id="task-input" placeholder="有什麼想探索的？例如：推薦台北大安區日式餐廳" />
+    <button id="run-btn" onclick="runAgent()">執行</button>
+  </div>
+
+  <div class="main-layout">
+    <div class="sidebar">
+
+      <div class="panel">
+        <div class="panel-header"><h3>Agents</h3></div>
+        <div class="agent-grid">
+          <span class="agent-node" id="node-orchestrator">friday</span>
+          <span class="agent-node" id="node-event_planner">活動規劃</span>
+          <span class="agent-node" id="node-food_advisor">飲食顧問</span>
+          <span class="agent-node" id="node-local_scout">在地探索</span>
+          <span class="agent-node" id="node-researcher">研究員</span>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header"><h3>Thinking</h3></div>
+        <div class="panel-body scrollable" id="thinking-panel">
+          <div style="color:#334155;font-size:12px;">等待執行...</div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header"><h3>Tool Calls</h3></div>
+        <div class="panel-body scrollable" id="tool-panel">
+          <div style="color:#334155;font-size:12px;">等待執行...</div>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="panel" style="min-height: 500px;">
+      <div class="panel-header"><h3>回答</h3></div>
+      <div class="panel-body" style="padding: 20px;">
+        <div class="result-content empty" id="result-panel">Friday Agent 準備好了，請輸入任務或點選上方快捷按鈕。</div>
+      </div>
+    </div>
   </div>
 </div>
 
-<!-- 推理過程 -->
-<div class="panel">
-  <h3>Thinking</h3>
-  <div id="thinking-panel"><span style="color:#ccc;font-size:13px;">等待執行...</span></div>
-</div>
-
-<!-- Tool 呼叫 -->
-<div class="panel">
-  <h3>Tool Calls</h3>
-  <div id="tool-panel"><span style="color:#ccc;font-size:13px;">等待執行...</span></div>
-</div>
-
-<!-- 最終答案 -->
-<div class="panel">
-  <h3>最終回答</h3>
-  <div id="result-panel" style="white-space: pre-wrap; font-size: 15px; color: #ccc; font-size:13px;">等待執行...</div>
+<!-- Profile Modal -->
+<div class="modal-overlay" id="profile-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>偏好設定（profile.md）</h2>
+      <button class="modal-close" onclick="closeProfile()">×</button>
+    </div>
+    <textarea id="profile-editor" spellcheck="false"></textarea>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeProfile()">取消</button>
+      <button class="btn-primary" onclick="saveProfile()">儲存</button>
+    </div>
+  </div>
 </div>
 
 <script>
-const toolCards = {};  // tool_use_id → DOM element
+const toolCards = {};
+
+function setTask(text) {
+  document.getElementById('task-input').value = text;
+  document.getElementById('task-input').focus();
+}
 
 function runAgent() {
   const task = document.getElementById('task-input').value.trim();
@@ -78,16 +356,14 @@ function runAgent() {
   btn.disabled = true;
   btn.textContent = '執行中...';
 
-  // 清空面板
   document.getElementById('thinking-panel').innerHTML = '';
   document.getElementById('tool-panel').innerHTML = '';
-  document.getElementById('result-panel').innerHTML = '';
-  document.getElementById('result-panel').style.color = '';
-  document.querySelectorAll('.agent-node').forEach(n => {
-    n.className = 'agent-node';
-  });
+  const resultEl = document.getElementById('result-panel');
+  resultEl.innerHTML = '<div style="color:#475569;font-size:13px;">思考中...</div>';
+  resultEl.className = 'result-content';
+  Object.keys(toolCards).forEach(k => delete toolCards[k]);
 
-  // 標記 orchestrator 為 active
+  document.querySelectorAll('.agent-node').forEach(n => n.className = 'agent-node');
   document.getElementById('node-orchestrator').className = 'agent-node active';
 
   fetch('/run', {
@@ -101,24 +377,14 @@ function runAgent() {
 
     function read() {
       reader.read().then(({ done, value }) => {
-        if (done) {
-          btn.disabled = false;
-          btn.textContent = '執行';
-          return;
-        }
+        if (done) { btn.disabled = false; btn.textContent = '執行'; return; }
         buffer += decoder.decode(value, { stream: true });
-
         const lines = buffer.split('\n');
-        buffer = lines.pop();  // 保留未完成的行
-
+        buffer = lines.pop();
         for (const line of lines) {
           if (line.startsWith('data: ')) {
-            try {
-              const { type, data } = JSON.parse(line.slice(6));
-              handleEvent(type, data);
-            } catch (e) {
-              console.error('Parse error:', e);
-            }
+            try { const { type, data } = JSON.parse(line.slice(6)); handleEvent(type, data); }
+            catch (e) {}
           }
         }
         read();
@@ -126,8 +392,7 @@ function runAgent() {
     }
     read();
   }).catch(err => {
-    document.getElementById('result-panel').innerHTML =
-      `<div class="error-msg">連線錯誤：${err.message}</div>`;
+    document.getElementById('result-panel').innerHTML = `<div class="error-msg">連線錯誤：${escHtml(err.message)}</div>`;
     btn.disabled = false;
     btn.textContent = '執行';
   });
@@ -137,29 +402,33 @@ function handleEvent(type, data) {
   if (type === 'thinking') {
     const div = document.createElement('div');
     div.className = 'thinking-block';
-    div.innerHTML = `<div class="agent-label">${data.agent}</div>${escapeHtml(data.text)}`;
-    document.getElementById('thinking-panel').appendChild(div);
+    div.innerHTML = `<div class="agent-label">${escHtml(data.agent)}</div>${escHtml(data.text)}`;
+    const panel = document.getElementById('thinking-panel');
+    panel.appendChild(div);
+    panel.scrollTop = panel.scrollHeight;
   }
 
   else if (type === 'tool_call') {
     const card = document.createElement('div');
     card.className = 'tool-card';
     card.innerHTML = `
-      <div class="tool-agent">by ${data.agent}</div>
-      <div class="tool-name">${data.name}</div>
-      <div class="tool-input">輸入：${escapeHtml(JSON.stringify(data.input, null, 2))}</div>
+      <div class="tool-agent">by ${escHtml(data.agent)}</div>
+      <div class="tool-name">${escHtml(data.name)}</div>
+      <div class="tool-input">${escHtml(JSON.stringify(data.input))}</div>
     `;
     toolCards[data.tool_use_id] = card;
-    document.getElementById('tool-panel').appendChild(card);
+    const panel = document.getElementById('tool-panel');
+    panel.appendChild(card);
+    panel.scrollTop = panel.scrollHeight;
   }
 
   else if (type === 'tool_result') {
     const card = toolCards[data.tool_use_id];
     if (card) {
-      const resultDiv = document.createElement('div');
-      resultDiv.className = 'tool-result';
-      resultDiv.textContent = `結果：${data.result}`;
-      card.appendChild(resultDiv);
+      const r = document.createElement('div');
+      r.className = 'tool-result';
+      r.textContent = data.result.length > 400 ? data.result.slice(0, 400) + '...' : data.result;
+      card.appendChild(r);
     }
   }
 
@@ -175,27 +444,48 @@ function handleEvent(type, data) {
 
   else if (type === 'done') {
     document.getElementById('node-orchestrator').className = 'agent-node done';
-    document.getElementById('result-panel').textContent = data.result;
+    const el = document.getElementById('result-panel');
+    el.className = 'result-content';
+    el.innerHTML = marked.parse(data.result || '（無回覆）');
   }
 
   else if (type === 'error') {
-    document.getElementById('result-panel').innerHTML =
-      `<div class="error-msg">錯誤：${escapeHtml(data.message)}</div>`;
+    document.getElementById('result-panel').innerHTML = `<div class="error-msg">錯誤：${escHtml(data.message)}</div>`;
+    document.getElementById('run-btn').disabled = false;
+    document.getElementById('run-btn').textContent = '執行';
   }
 }
 
-function escapeHtml(str) {
+function escHtml(str) {
   return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-// 支援 Enter 鍵送出
+async function openProfile() {
+  const res = await fetch('/profile');
+  document.getElementById('profile-editor').value = await res.text();
+  document.getElementById('profile-modal').classList.add('open');
+}
+function closeProfile() {
+  document.getElementById('profile-modal').classList.remove('open');
+}
+async function saveProfile() {
+  const content = document.getElementById('profile-editor').value;
+  await fetch('/profile', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content })
+  });
+  closeProfile();
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('task-input').addEventListener('keydown', e => {
     if (e.key === 'Enter') runAgent();
+  });
+  document.getElementById('profile-modal').addEventListener('click', e => {
+    if (e.target === e.currentTarget) closeProfile();
   });
 });
 </script>
