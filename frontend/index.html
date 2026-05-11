@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <title>Agent Demo</title>
+  <style>
+    body { font-family: system-ui; max-width: 900px; margin: 2rem auto; padding: 0 1rem; }
+    #input-area { display: flex; gap: 8px; margin-bottom: 1.5rem; }
+    #task-input { flex: 1; padding: 8px 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 15px; }
+    button { padding: 8px 16px; background: #5b4fbe; color: white; border: none; border-radius: 8px; cursor: pointer; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .panel { border: 1px solid #eee; border-radius: 10px; padding: 1rem; margin-bottom: 1rem; }
+    .panel h3 { margin: 0 0 8px; font-size: 13px; color: #888; text-transform: uppercase; letter-spacing: .05em; }
+
+    .thinking-block { background: #f5f3ff; border-left: 3px solid #7c6fcd; padding: 8px 12px; border-radius: 4px; margin-bottom: 8px; font-size: 13px; color: #444; white-space: pre-wrap; }
+    .thinking-block .agent-label { font-weight: 600; color: #7c6fcd; margin-bottom: 4px; font-size: 11px; text-transform: uppercase; }
+
+    .tool-card { border: 1px solid #e5e7eb; border-radius: 8px; padding: 10px 14px; margin-bottom: 8px; font-size: 13px; }
+    .tool-card .tool-name { font-weight: 600; color: #0f766e; margin-bottom: 4px; }
+    .tool-card .tool-agent { font-size: 11px; color: #9ca3af; margin-bottom: 4px; }
+    .tool-card .tool-input { color: #666; margin-bottom: 4px; font-family: monospace; font-size: 12px; }
+    .tool-card .tool-result { color: #16a34a; border-top: 1px solid #f0fdf4; padding-top: 6px; margin-top: 6px; white-space: pre-wrap; }
+
+    .agent-node { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 12px; margin: 4px; background: #f3f4f6; border: 1px solid #e5e7eb; transition: all 0.3s; }
+    .agent-node.active { background: #fef3c7; border-color: #f59e0b; color: #92400e; }
+    .agent-node.done { background: #d1fae5; border-color: #10b981; color: #065f46; }
+
+    .error-msg { color: #dc2626; background: #fef2f2; border: 1px solid #fca5a5; border-radius: 8px; padding: 10px 14px; font-size: 14px; }
+  </style>
+</head>
+<body>
+
+<h2>Agent 決策視覺化</h2>
+
+<div id="input-area">
+  <input id="task-input" placeholder="輸入任務，例如：查詢台灣 AI 新創公司並整理摘要" />
+  <button id="run-btn" onclick="runAgent()">執行</button>
+</div>
+
+<!-- Agent 狀態 -->
+<div class="panel">
+  <h3>Agents</h3>
+  <div id="agent-graph">
+    <span class="agent-node" id="node-orchestrator">orchestrator</span>
+    <span class="agent-node" id="node-researcher">researcher</span>
+    <span class="agent-node" id="node-coder">coder</span>
+    <span class="agent-node" id="node-critic">critic</span>
+  </div>
+</div>
+
+<!-- 推理過程 -->
+<div class="panel">
+  <h3>Thinking</h3>
+  <div id="thinking-panel"><span style="color:#ccc;font-size:13px;">等待執行...</span></div>
+</div>
+
+<!-- Tool 呼叫 -->
+<div class="panel">
+  <h3>Tool Calls</h3>
+  <div id="tool-panel"><span style="color:#ccc;font-size:13px;">等待執行...</span></div>
+</div>
+
+<!-- 最終答案 -->
+<div class="panel">
+  <h3>最終回答</h3>
+  <div id="result-panel" style="white-space: pre-wrap; font-size: 15px; color: #ccc; font-size:13px;">等待執行...</div>
+</div>
+
+<script>
+const toolCards = {};  // tool_use_id → DOM element
+
+function runAgent() {
+  const task = document.getElementById('task-input').value.trim();
+  if (!task) return;
+
+  const btn = document.getElementById('run-btn');
+  btn.disabled = true;
+  btn.textContent = '執行中...';
+
+  // 清空面板
+  document.getElementById('thinking-panel').innerHTML = '';
+  document.getElementById('tool-panel').innerHTML = '';
+  document.getElementById('result-panel').innerHTML = '';
+  document.getElementById('result-panel').style.color = '';
+  document.querySelectorAll('.agent-node').forEach(n => {
+    n.className = 'agent-node';
+  });
+
+  // 標記 orchestrator 為 active
+  document.getElementById('node-orchestrator').className = 'agent-node active';
+
+  fetch('/run', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ task })
+  }).then(res => {
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    function read() {
+      reader.read().then(({ done, value }) => {
+        if (done) {
+          btn.disabled = false;
+          btn.textContent = '執行';
+          return;
+        }
+        buffer += decoder.decode(value, { stream: true });
+
+        const lines = buffer.split('\n');
+        buffer = lines.pop();  // 保留未完成的行
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const { type, data } = JSON.parse(line.slice(6));
+              handleEvent(type, data);
+            } catch (e) {
+              console.error('Parse error:', e);
+            }
+          }
+        }
+        read();
+      });
+    }
+    read();
+  }).catch(err => {
+    document.getElementById('result-panel').innerHTML =
+      `<div class="error-msg">連線錯誤：${err.message}</div>`;
+    btn.disabled = false;
+    btn.textContent = '執行';
+  });
+}
+
+function handleEvent(type, data) {
+  if (type === 'thinking') {
+    const div = document.createElement('div');
+    div.className = 'thinking-block';
+    div.innerHTML = `<div class="agent-label">${data.agent}</div>${escapeHtml(data.text)}`;
+    document.getElementById('thinking-panel').appendChild(div);
+  }
+
+  else if (type === 'tool_call') {
+    const card = document.createElement('div');
+    card.className = 'tool-card';
+    card.innerHTML = `
+      <div class="tool-agent">by ${data.agent}</div>
+      <div class="tool-name">${data.name}</div>
+      <div class="tool-input">輸入：${escapeHtml(JSON.stringify(data.input, null, 2))}</div>
+    `;
+    toolCards[data.tool_use_id] = card;
+    document.getElementById('tool-panel').appendChild(card);
+  }
+
+  else if (type === 'tool_result') {
+    const card = toolCards[data.tool_use_id];
+    if (card) {
+      const resultDiv = document.createElement('div');
+      resultDiv.className = 'tool-result';
+      resultDiv.textContent = `結果：${data.result}`;
+      card.appendChild(resultDiv);
+    }
+  }
+
+  else if (type === 'agent_start') {
+    const node = document.getElementById(`node-${data.name}`);
+    if (node) node.className = 'agent-node active';
+  }
+
+  else if (type === 'agent_done') {
+    const node = document.getElementById(`node-${data.name}`);
+    if (node) node.className = 'agent-node done';
+  }
+
+  else if (type === 'done') {
+    document.getElementById('node-orchestrator').className = 'agent-node done';
+    document.getElementById('result-panel').textContent = data.result;
+  }
+
+  else if (type === 'error') {
+    document.getElementById('result-panel').innerHTML =
+      `<div class="error-msg">錯誤：${escapeHtml(data.message)}</div>`;
+  }
+}
+
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+// 支援 Enter 鍵送出
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('task-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') runAgent();
+  });
+});
+</script>
+</body>
+</html>
