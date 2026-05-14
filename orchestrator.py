@@ -132,7 +132,7 @@ async def run_agent(
         tool_uses = []
 
         with client.messages.stream(
-            model="claude-sonnet-4-20250514",
+            model="claude-sonnet-4-6",
             max_tokens=8096,
             system=system_prompt,
             thinking={"type": "enabled", "budget_tokens": 2000},
