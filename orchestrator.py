@@ -1,5 +1,6 @@
 import asyncio
 import math
+import os
 from typing import Callable
 import anthropic
 from tools.web_search import web_search as _web_search
@@ -127,7 +128,7 @@ async def run_agent(
 
     messages = [{"role": "user", "content": task}]
     accumulated_text = []  # 跨輪次累積所有文字
-    MAX_ROUNDS = 10
+    MAX_ROUNDS = int(os.getenv("AGENT_MAX_ROUNDS", "10"))
 
     for _round in range(MAX_ROUNDS):
         response_blocks = []

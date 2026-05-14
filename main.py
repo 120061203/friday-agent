@@ -1,4 +1,5 @@
 from dotenv import load_dotenv
+import os
 load_dotenv()
 
 from fastapi import FastAPI, Request
@@ -14,6 +15,8 @@ import asyncio
 
 from orchestrator import run_agent
 from tools.profile_manager import read_profile, PROFILE_PATH
+
+RATE_LIMIT = os.getenv("RATE_LIMIT", "10/minute")
 
 limiter = Limiter(key_func=get_remote_address)
 app = FastAPI()
@@ -33,7 +36,7 @@ class RunRequest(BaseModel):
 
 
 @app.post("/run")
-@limiter.limit("10/minute")
+@limiter.limit(RATE_LIMIT)
 async def run(request: Request, body: RunRequest):
     queue: asyncio.Queue = asyncio.Queue()
 
