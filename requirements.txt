@@ -5,3 +5,4 @@ python-dotenv==1.2.2
 ddgs
 httpx==0.28.1
 pydantic==2.13.4
+slowapi==0.1.9

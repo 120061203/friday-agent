@@ -1,18 +1,24 @@
 from dotenv import load_dotenv
 load_dotenv()
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 import json
 import asyncio
 
 from orchestrator import run_agent
 from tools.profile_manager import read_profile, PROFILE_PATH
 
+limiter = Limiter(key_func=get_remote_address)
 app = FastAPI()
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 app.add_middleware(
     CORSMiddleware,
@@ -27,7 +33,8 @@ class RunRequest(BaseModel):
 
 
 @app.post("/run")
-async def run(body: RunRequest):
+@limiter.limit("10/minute")
+async def run(request: Request, body: RunRequest):
     queue: asyncio.Queue = asyncio.Queue()
 
     async def emit(event_type: str, data: dict):

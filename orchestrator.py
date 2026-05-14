@@ -127,8 +127,9 @@ async def run_agent(
 
     messages = [{"role": "user", "content": task}]
     accumulated_text = []  # 跨輪次累積所有文字
+    MAX_ROUNDS = 10
 
-    while True:
+    for _round in range(MAX_ROUNDS):
         response_blocks = []
         tool_uses = []
 
@@ -198,6 +199,9 @@ async def run_agent(
 
         messages.append({"role": "assistant", "content": response_blocks})
         messages.append({"role": "user", "content": tool_results})
+
+    # 超過最大輪次，回傳已累積的內容或錯誤訊息
+    return "\n\n".join(accumulated_text).strip() or "（已達最大執行輪次，任務未完成）"
 
 
 async def dispatch_tool(name: str, input: dict, emit, agent_name: str, parent_system_prompt: str):
