@@ -179,6 +179,9 @@ async def run_agent(
             final_text = next(
                 (b.text for b in response_blocks if hasattr(b, "text")), ""
             )
+            # Claude 靜默結束時，回傳最後一個 tool_result 的內容（例如 sub-agent 的完整回答）
+            if not final_text and tool_results:
+                final_text = tool_results[-1]["content"]
             return final_text
 
         messages.append({"role": "assistant", "content": response_blocks})
