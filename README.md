@@ -4,6 +4,8 @@
 
 ![Claude](https://img.shields.io/badge/Claude-Sonnet_4.6-blue) ![FastAPI](https://img.shields.io/badge/FastAPI-0.136-green) ![Python](https://img.shields.io/badge/Python-3.11+-yellow)
 
+**Live Demo：[friday-agent.xsong.us](https://friday-agent.xsong.us)**
+
 ---
 
 ## 功能
