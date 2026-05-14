@@ -126,6 +126,7 @@ async def run_agent(
         system_prompt = await build_system_prompt()
 
     messages = [{"role": "user", "content": task}]
+    accumulated_text = []  # 跨輪次累積所有文字
 
     while True:
         response_blocks = []
@@ -160,6 +161,11 @@ async def run_agent(
                     tool_uses.append(cb)
                 response_blocks.append(cb)
 
+        # 這一輪有 text block 就累積起來（即使同時有 tool_use）
+        round_text = next((b.text for b in response_blocks if hasattr(b, "text")), "")
+        if round_text:
+            accumulated_text.append(round_text)
+
         tool_results = []
         last_agent_result = None
         for tool_use in tool_uses:
@@ -180,15 +186,13 @@ async def run_agent(
                 last_agent_result = str(result)
 
         if not tool_uses:
-            final_text = next(
-                (b.text for b in response_blocks if hasattr(b, "text")), ""
-            )
-            # Claude 靜默結束時，回傳最後一個 tool_result 的內容
-            if not final_text and tool_results:
-                final_text = tool_results[-1]["content"]
-            return final_text
+            # 合併所有累積的文字
+            all_text = "\n\n".join(accumulated_text).strip()
+            if not all_text and tool_results:
+                all_text = tool_results[-1]["content"]
+            return all_text
 
-        # 如果這輪只有 call_agent，直接回傳 sub-agent 的完整結果，不讓 orchestrator 再包裝
+        # 如果這輪只有 call_agent，直接回傳 sub-agent 的完整結果
         if last_agent_result and all(t.name == "call_agent" or t.name == "update_profile" for t in tool_uses):
             return last_agent_result
 
