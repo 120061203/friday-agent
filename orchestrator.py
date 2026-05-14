@@ -14,7 +14,7 @@ from agents.researcher import researcher_prompt
 from agents.coder import coder_prompt
 from agents.critic import critic_prompt
 
-client = anthropic.Anthropic()
+client = anthropic.AsyncAnthropic()
 
 FRIDAY_SYSTEM_PROMPT = """你是 Friday，一個專為享受美好生活設計的 AI 個人助理。
 
@@ -155,7 +155,7 @@ async def run_agent(
         response_blocks = []
         tool_uses = []
 
-        with client.messages.stream(
+        async with client.messages.stream(
             model="claude-sonnet-4-6",
             max_tokens=8096,
             system=system_prompt,
@@ -163,16 +163,21 @@ async def run_agent(
             tools=tools,
             messages=messages
         ) as stream:
-            for block in stream:
-                if block.type == "content_block_start":
-                    cb = block.content_block
-                    if cb.type == "thinking":
-                        await emit("thinking", {
+            async for event in stream:
+                etype = getattr(event, "type", None)
+                if etype == "content_block_start":
+                    cb = event.content_block
+                    if getattr(cb, "type", None) == "thinking":
+                        await emit("thinking_start", {"agent": agent_name})
+                elif etype == "content_block_delta":
+                    delta = event.delta
+                    if getattr(delta, "type", None) == "thinking_delta":
+                        await emit("thinking_delta", {
                             "agent": agent_name,
-                            "text": cb.thinking
+                            "text": getattr(delta, "thinking", "")
                         })
 
-            final_message = stream.get_final_message()
+            final_message = await stream.get_final_message()
             for cb in final_message.content:
                 if cb.type == "tool_use":
                     await emit("tool_call", {

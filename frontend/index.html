@@ -398,13 +398,24 @@ function runAgent() {
 }
 
 function handleEvent(type, data) {
-  if (type === 'thinking') {
+  if (type === 'thinking_start') {
     const div = document.createElement('div');
     div.className = 'thinking-block';
-    div.innerHTML = `<div class="agent-label">${escHtml(data.agent)}</div>${escHtml(data.text)}`;
+    div.innerHTML = `<div class="agent-label">${escHtml(data.agent)}</div><span class="thinking-text"></span>`;
     const panel = document.getElementById('thinking-panel');
     panel.appendChild(div);
     panel.scrollTop = panel.scrollHeight;
+  }
+
+  else if (type === 'thinking_delta') {
+    const panel = document.getElementById('thinking-panel');
+    const blocks = panel.querySelectorAll('.thinking-block');
+    const last = blocks[blocks.length - 1];
+    if (last) {
+      const span = last.querySelector('.thinking-text');
+      if (span) span.textContent += data.text;
+      panel.scrollTop = panel.scrollHeight;
+    }
   }
 
   else if (type === 'tool_call') {
