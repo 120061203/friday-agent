@@ -16,7 +16,7 @@ import asyncio
 from orchestrator import run_agent
 from tools.profile_manager import read_profile, PROFILE_PATH
 
-RATE_LIMIT = os.getenv("RATE_LIMIT", "10/minute")
+RATE_LIMIT = f"{os.getenv('RATE_LIMIT_PER_MINUTE', '10')}/minute"
 
 limiter = Limiter(key_func=get_remote_address)
 app = FastAPI()
