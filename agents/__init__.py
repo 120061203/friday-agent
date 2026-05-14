@@ -1,7 +1,7 @@
 from .researcher import researcher_prompt
 from .coder import coder_prompt
 from .critic import critic_prompt
-from .event_planner import event_planner_prompt
+from .event_planner import _get_event_planner_prompt as event_planner_prompt
 from .food_advisor import food_advisor_prompt
 from .local_scout import local_scout_prompt
 

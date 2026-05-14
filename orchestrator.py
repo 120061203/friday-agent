@@ -215,7 +215,8 @@ async def dispatch_tool(name: str, input: dict, emit, agent_name: str, parent_sy
 
 
 async def tool_call_agent(agent_name: str, task: str, emit, parent_system_prompt: str) -> str:
-    base_prompt = AGENT_PROMPTS.get(agent_name)
+    prompt_or_fn = AGENT_PROMPTS.get(agent_name)
+    base_prompt = prompt_or_fn() if callable(prompt_or_fn) else prompt_or_fn
 
     if base_prompt:
         # 在 agent prompt 後面附加 profile context
