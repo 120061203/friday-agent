@@ -6,6 +6,7 @@ import anthropic
 from tools.web_search import web_search as _web_search
 from tools.current_time import get_current_time as _get_current_time
 from tools.profile_manager import read_profile, update_profile as _update_profile
+from tools.bento_manager import read_bento_history as _read_bento_history, save_bento_plan as _save_bento_plan
 from agents.event_planner import event_planner_prompt
 from agents.food_advisor import food_advisor_prompt
 from agents.local_scout import local_scout_prompt
@@ -73,6 +74,26 @@ tools = [
                 "value": {"type": "string", "description": "新的值"}
             },
             "required": ["key", "value"]
+        }
+    },
+    {
+        "name": "save_bento_plan",
+        "description": "儲存本週便當計畫到 bento_history.md",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "plan": {"type": "string", "description": "完整的便當計畫內容（Markdown 格式）"}
+            },
+            "required": ["plan"]
+        }
+    },
+    {
+        "name": "read_bento_history",
+        "description": "讀取過去的便當計畫記錄",
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": []
         }
     },
     {
@@ -214,6 +235,12 @@ async def dispatch_tool(name: str, input: dict, emit, agent_name: str, parent_sy
 
     elif name == "update_profile":
         return await _update_profile(input["key"], input["value"])
+
+    elif name == "save_bento_plan":
+        return await _save_bento_plan(input["plan"])
+
+    elif name == "read_bento_history":
+        return await _read_bento_history()
 
     elif name == "calculator":
         try:
