@@ -243,7 +243,10 @@ async def dispatch_tool(name: str, input: dict, emit, agent_name: str, parent_sy
         return await _update_profile(input["key"], input["value"])
 
     elif name == "save_bento_plan":
-        return await _save_bento_plan(input["plan"])
+        plan = input.get("plan", "").strip()
+        if not plan:
+            return "錯誤：save_bento_plan 需要傳入 plan 參數（完整便當計畫的 Markdown 內容）"
+        return await _save_bento_plan(plan)
 
     elif name == "read_bento_history":
         return await _read_bento_history()
