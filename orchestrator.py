@@ -161,6 +161,7 @@ async def run_agent(
                 response_blocks.append(cb)
 
         tool_results = []
+        last_agent_result = None
         for tool_use in tool_uses:
             result = await dispatch_tool(tool_use.name, tool_use.input, emit, agent_name, system_prompt)
             await emit("tool_result", {
@@ -174,15 +175,22 @@ async def run_agent(
                 "tool_use_id": tool_use.id,
                 "content": str(result)
             })
+            # 記錄 sub-agent 回傳的完整內容
+            if tool_use.name == "call_agent":
+                last_agent_result = str(result)
 
         if not tool_uses:
             final_text = next(
                 (b.text for b in response_blocks if hasattr(b, "text")), ""
             )
-            # Claude 靜默結束時，回傳最後一個 tool_result 的內容（例如 sub-agent 的完整回答）
+            # Claude 靜默結束時，回傳最後一個 tool_result 的內容
             if not final_text and tool_results:
                 final_text = tool_results[-1]["content"]
             return final_text
+
+        # 如果這輪只有 call_agent，直接回傳 sub-agent 的完整結果，不讓 orchestrator 再包裝
+        if last_agent_result and all(t.name == "call_agent" or t.name == "update_profile" for t in tool_uses):
+            return last_agent_result
 
         messages.append({"role": "assistant", "content": response_blocks})
         messages.append({"role": "user", "content": tool_results})
