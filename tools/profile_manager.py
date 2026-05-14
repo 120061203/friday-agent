@@ -2,7 +2,10 @@ import os
 import re
 from datetime import datetime
 
-PROFILE_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "profile.md")
+_BASE_DIR = os.path.dirname(os.path.dirname(__file__))
+_DATA_DIR = os.path.join(_BASE_DIR, "data")
+os.makedirs(_DATA_DIR, exist_ok=True)
+PROFILE_PATH = os.path.join(_DATA_DIR, "profile.md")
 
 
 DEFAULT_PROFILE = """# Friday Agent — 使用者偏好檔案
