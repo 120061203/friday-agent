@@ -215,7 +215,20 @@ Orchestrator 根據結果繼續判斷
 
 **目前限制：**
 - Sub-agent 為依序執行，非並行
-- 只支援 orchestrator → sub-agent 單向，sub-agent 之間不互通
+- 只支援 orchestrator → sub-agent 單向，sub-agent 之間不互通（由程式層的 tool 子集限制強制保證，見下方「路由與 Tool 選擇優化」）
+
+---
+
+## 路由與 Tool 選擇優化
+
+> 核心位置：`orchestrator.py` `AGENT_TOOLS`、`tools` 中的 `call_agent` schema
+
+原本每個 agent（無論是主 orchestrator 還是 sub-agent）都共用同一份完整的 7 個 tools，可選項越多，Claude 選錯 tool 的機率越高，也讓 sub-agent 之間可以互相呼叫 `call_agent` 形成無防護的遞迴。已完成／規劃中的改進：
+
+- [x] **依角色限縮可用工具**：新增 `AGENT_TOOLS` 對照表，每個 agent 只拿自己職責範圍內的 tools（例如 `researcher` 只有 `web_search`，`critic` 不需要任何 tool）。副作用：sub-agent 不再拿到 `call_agent`，順手堵住了遞迴呼叫的風險。
+- [x] **`call_agent` 的 `agent_name` 補上職責邊界說明**：在 `input_schema` 的 enum 旁加上每個 sub-agent 的適用場景描述，讓 Claude 更準確判斷該委派給誰，也讓長期沒有路由入口的 `coder`／`critic` 有明確的觸發場景。
+- [ ] call_agent 遞迴深度保護（目前用工具子集間接擋掉，尚未有明確的 max-depth 機制）
+- [ ] `call_agent` 單獨呼叫才會直接回傳 sub-agent 完整結果的 shortcut（`orchestrator.py` 第 227 行附近），與其他 tool 混用時會被上層 model 再摘要一次，格式可能跑掉
 
 ---
 

@@ -110,13 +110,22 @@ tools = [
     },
     {
         "name": "call_agent",
-        "description": "呼叫專門的 sub-agent 處理特定任務",
+        "description": "呼叫專門的 sub-agent 處理特定任務，並取得該 agent 產出的完整結果。單次、簡單的查詢請直接呼叫 web_search，不需要透過 sub-agent。",
         "input_schema": {
             "type": "object",
             "properties": {
                 "agent_name": {
                     "type": "string",
-                    "enum": ["event_planner", "food_advisor", "local_scout", "researcher", "coder", "critic"]
+                    "enum": ["event_planner", "food_advisor", "local_scout", "researcher", "coder", "critic"],
+                    "description": (
+                        "依任務性質選擇對應的 sub-agent：\n"
+                        "- event_planner：規劃週五下班後到週日晚的完整活動行程（需整合多天、多活動）\n"
+                        "- food_advisor：餐廳推薦，或一週便當料理規劃（含採購清單）\n"
+                        "- local_scout：查詢單一城市近期的活動、展覽、電影、市集（不需跨天整合行程）\n"
+                        "- researcher：一般性資訊蒐集與摘要，不屬於上述生活場景類任務\n"
+                        "- coder：撰寫或解釋程式碼\n"
+                        "- critic：審查既有內容（程式碼、文章、計畫）並提出具體改進建議"
+                    )
                 },
                 "task": {"type": "string", "description": "交給 sub-agent 的完整任務描述，包含相關 context"}
             },
@@ -124,6 +133,18 @@ tools = [
         }
     }
 ]
+
+# 每個 agent 只能存取自己職責範圍內的 tools，避免可選項過多降低 tool 選擇準確度，
+# 也讓 sub-agent 之間無法再透過 call_agent 互相呼叫（無防護遞迴風險）。
+AGENT_TOOLS = {
+    "orchestrator": ["web_search", "get_current_time", "update_profile", "save_bento_plan", "read_bento_history", "calculator", "call_agent"],
+    "event_planner": ["web_search", "get_current_time"],
+    "food_advisor": ["web_search", "get_current_time", "read_bento_history", "save_bento_plan"],
+    "local_scout": ["web_search", "get_current_time"],
+    "researcher": ["web_search"],
+    "coder": ["calculator"],
+    "critic": [],
+}
 
 AGENT_PROMPTS = {
     "event_planner": event_planner_prompt,
@@ -133,6 +154,11 @@ AGENT_PROMPTS = {
     "coder": coder_prompt,
     "critic": critic_prompt,
 }
+
+
+def tools_for_agent(agent_name: str) -> list:
+    allowed = AGENT_TOOLS.get(agent_name, [t["name"] for t in tools])
+    return [t for t in tools if t["name"] in allowed]
 
 
 async def build_system_prompt() -> str:
@@ -153,6 +179,7 @@ async def run_agent(
     messages = [{"role": "user", "content": task}]
     accumulated_text = []  # 跨輪次累積所有文字
     MAX_ROUNDS = int(os.getenv("AGENT_MAX_ROUNDS", "10"))
+    agent_tools = tools_for_agent(agent_name)
 
     for _round in range(MAX_ROUNDS):
         response_blocks = []
@@ -163,7 +190,7 @@ async def run_agent(
             max_tokens=8096,
             system=system_prompt,
             thinking={"type": "adaptive", "display": "summarized"},
-            tools=tools,
+            tools=agent_tools,
             messages=messages
         ) as stream:
             async for event in stream:
