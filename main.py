@@ -71,6 +71,35 @@ async def run(request: Request, body: RunRequest):
     )
 
 
+@app.get("/debug/files")
+async def debug_files():
+    """
+    診斷用端點：回報這個執行環境實際看到哪些知識庫/資料檔案，
+    用來排查「本機正常、部署環境讀不到檔案」這類問題（例如 volume 掛載蓋掉了映像檔內容）。
+    只列檔名，不回傳檔案內容。
+    """
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+
+    def describe(rel_path: str):
+        abs_path = os.path.join(base_dir, rel_path)
+        if not os.path.isdir(abs_path):
+            return {"path": abs_path, "exists": False, "files": []}
+        return {
+            "path": abs_path,
+            "exists": True,
+            "files": sorted(os.listdir(abs_path)),
+        }
+
+    return {
+        "cwd": os.getcwd(),
+        "base_dir": base_dir,
+        "data/runbooks": describe("data/runbooks"),
+        "skills/devops-skill/references": describe("skills/devops-skill/references"),
+        "data/profile.md exists": os.path.exists(os.path.join(base_dir, "data", "profile.md")),
+        "data/bento_history.md exists": os.path.exists(os.path.join(base_dir, "data", "bento_history.md")),
+    }
+
+
 @app.get("/profile")
 async def get_profile():
     content = await read_profile()
