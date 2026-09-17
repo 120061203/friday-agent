@@ -250,6 +250,9 @@ Orchestrator 根據結果繼續判斷
 
 - [x] **依角色限縮可用工具**：新增 `AGENT_TOOLS` 對照表，每個 agent 只拿自己職責範圍內的 tools（例如 `researcher` 只有 `web_search`，`critic` 不需要任何 tool）。副作用：sub-agent 不再拿到 `call_agent`，順手堵住了遞迴呼叫的風險。
 - [x] **`call_agent` 的 `agent_name` 補上職責邊界說明**：在 `input_schema` 的 enum 旁加上每個 sub-agent 的適用場景描述，讓 Claude 更準確判斷該委派給誰，也讓長期沒有路由入口的 `coder`／`critic` 有明確的觸發場景。
+- [x] **修掉 orchestrator 與 `food_advisor` 的工具重疊**：`orchestrator` 原本直接拿著 `read_bento_history`／`save_bento_plan`（跟 `food_advisor` 完全一樣）。實測發現一問便當規劃，orchestrator 會自己先讀歷史記錄，發現已有符合的舊計畫就直接回覆，整趟**完全不會呼叫 `call_agent(food_advisor)`**——Agents 面板上 `飲食顧問` 永遠不會亮，也繞過了 food_advisor 系統提示裡「避免重複」「食材重複利用」「標示低脂/無肉日」這些專屬規則。拿掉 orchestrator 這兩個工具後，便當任務會強制走 `call_agent`。
+  - 這兩個工具跟 `web_search`／`get_current_time` 不一樣：後兩者是通用能力，orchestrator 系統提示本來就設計成「簡單查詢直接自己用 web_search 回答，複雜規劃才委派」，所以 `orchestrator` 跟 `event_planner`／`local_scout` 共用這兩個工具是刻意的，不是同一種問題。`read_bento_history`／`save_bento_plan` 則不同——便當規劃沒有「簡單版」，任何便當請求都該走 food_advisor 的專屬邏輯，orchestrator 不該有能力自己捷徑處理掉。
+  - 殘留風險：`event_planner`／`local_scout` 理論上還是有機會被 orchestrator 用同一套「我自己查一查就回答」的模式繞過去（機率遠低於便當，因為多天行程整合這類任務用 web_search 單獨回答明顯不夠），目前沒有專門測過，先記錄在這裡。
 - [ ] call_agent 遞迴深度保護（目前用工具子集間接擋掉，尚未有明確的 max-depth 機制）
 - [ ] `call_agent` 單獨呼叫才會直接回傳 sub-agent 完整結果的 shortcut（`orchestrator.py` 第 227 行附近），與其他 tool 混用時會被上層 model 再摘要一次，格式可能跑掉
 

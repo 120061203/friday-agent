@@ -227,7 +227,7 @@ tools = [
 # 每個 agent 只能存取自己職責範圍內的 tools，避免可選項過多降低 tool 選擇準確度，
 # 也讓 sub-agent 之間無法再透過 call_agent 互相呼叫（無防護遞迴風險）。
 AGENT_TOOLS = {
-    "orchestrator": ["web_search", "get_current_time", "update_profile", "save_bento_plan", "read_bento_history", "calculator", "call_agent"],
+    "orchestrator": ["web_search", "get_current_time", "update_profile", "calculator", "call_agent"],
     "event_planner": ["web_search", "get_current_time"],
     "food_advisor": ["web_search", "get_current_time", "read_bento_history", "save_bento_plan"],
     "local_scout": ["web_search", "get_current_time"],
