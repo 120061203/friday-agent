@@ -16,6 +16,8 @@ from agents.critic import critic_prompt
 
 client = anthropic.AsyncAnthropic()
 
+MODEL_NAME = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-5")
+
 FRIDAY_SYSTEM_PROMPT = """你是 Friday，一個專為享受美好生活設計的 AI 個人助理。
 
 你了解使用者的偏好（記錄在下方 profile），能夠：
@@ -157,7 +159,7 @@ async def run_agent(
         tool_uses = []
 
         async with client.messages.stream(
-            model="claude-sonnet-4-6",
+            model=MODEL_NAME,
             max_tokens=8096,
             system=system_prompt,
             thinking={"type": "enabled", "budget_tokens": 2000},
