@@ -162,7 +162,7 @@ async def run_agent(
             model=MODEL_NAME,
             max_tokens=8096,
             system=system_prompt,
-            thinking={"type": "enabled", "budget_tokens": 2000},
+            thinking={"type": "adaptive", "display": "summarized"},
             tools=tools,
             messages=messages
         ) as stream:
