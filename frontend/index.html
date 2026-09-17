@@ -250,6 +250,22 @@
     .btn-secondary { background: #374151; border: 1px solid #6b7280; color: #d1d5db; padding: 7px 16px; border-radius: 8px; font-size: 13px; cursor: pointer; }
     .btn-primary { background: #f59e0b; border: none; color: #0f172a; padding: 7px 16px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; }
 
+    /* Result panel header + download buttons */
+    .result-header { display: flex; align-items: center; justify-content: space-between; }
+    .download-actions { display: flex; gap: 6px; }
+    .dl-btn {
+      background: #374151;
+      border: 1px solid #6b7280;
+      color: #d1d5db;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 11px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .dl-btn:hover:not(:disabled) { border-color: #f59e0b; color: #fbbf24; }
+    .dl-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
     @media (max-width: 768px) {
       .main-layout { grid-template-columns: 1fr; }
     }
@@ -316,7 +332,13 @@
     </div>
 
     <div class="panel" style="min-height: 500px;">
-      <div class="panel-header"><h3>回答</h3></div>
+      <div class="panel-header result-header">
+        <h3>回答</h3>
+        <div class="download-actions">
+          <button class="dl-btn" id="dl-md-btn" onclick="downloadMarkdown()" disabled>下載 .md</button>
+          <button class="dl-btn" id="dl-html-btn" onclick="downloadHtml()" disabled>下載 .html</button>
+        </div>
+      </div>
       <div class="panel-body" style="padding: 20px;">
         <div class="result-content empty" id="result-panel">Friday Agent 準備好了，請輸入任務或點選上方快捷按鈕。</div>
       </div>
@@ -341,6 +363,8 @@
 
 <script>
 const toolCards = {};
+let lastResultMarkdown = '';
+let lastTaskText = '';
 
 function setTask(text) {
   document.getElementById('task-input').value = text;
@@ -371,6 +395,11 @@ function runAgent() {
   const btn = document.getElementById('run-btn');
   btn.disabled = true;
   btn.textContent = '執行中...';
+
+  lastTaskText = task;
+  lastResultMarkdown = '';
+  document.getElementById('dl-md-btn').disabled = true;
+  document.getElementById('dl-html-btn').disabled = true;
 
   document.getElementById('thinking-panel').innerHTML = '';
   document.getElementById('tool-panel').innerHTML = '';
@@ -474,6 +503,11 @@ function handleEvent(type, data) {
     const el = document.getElementById('result-panel');
     el.className = 'result-content';
     el.innerHTML = marked.parse(data.result || '（無回覆）');
+
+    lastResultMarkdown = data.result || '';
+    const hasResult = !!lastResultMarkdown.trim();
+    document.getElementById('dl-md-btn').disabled = !hasResult;
+    document.getElementById('dl-html-btn').disabled = !hasResult;
   }
 
   else if (type === 'error') {
@@ -487,6 +521,55 @@ function escHtml(str) {
   return String(str)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;')
     .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function downloadFilenameBase() {
+  const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+  const taskSlug = (lastTaskText || 'friday-result').trim().slice(0, 24).replace(/[\\/:*?"<>|]/g, '');
+  return `${taskSlug || 'friday-result'}_${stamp}`;
+}
+
+function triggerDownload(filename, content, mimeType) {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function downloadMarkdown() {
+  if (!lastResultMarkdown.trim()) return;
+  triggerDownload(`${downloadFilenameBase()}.md`, lastResultMarkdown, 'text/markdown;charset=utf-8');
+}
+
+function downloadHtml() {
+  if (!lastResultMarkdown.trim()) return;
+  const bodyHtml = marked.parse(lastResultMarkdown);
+  const doc = `<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<title>Friday Agent 回覆</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; max-width: 800px; margin: 2rem auto; padding: 0 1.5rem; line-height: 1.7; color: #1f2937; }
+  h1, h2 { border-bottom: 1px solid #e5e7eb; padding-bottom: 4px; }
+  code { background: #f3f4f6; padding: 1px 5px; border-radius: 3px; }
+  pre { background: #f3f4f6; padding: 10px; border-radius: 6px; overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { border: 1px solid #e5e7eb; padding: 6px 10px; }
+  th { background: #f9fafb; }
+  blockquote { border-left: 3px solid #f59e0b; padding-left: 10px; color: #4b5563; margin: 0.6em 0; }
+</style>
+</head>
+<body>
+${bodyHtml}
+</body>
+</html>`;
+  triggerDownload(`${downloadFilenameBase()}.html`, doc, 'text/html;charset=utf-8');
 }
 
 async function openProfile() {
