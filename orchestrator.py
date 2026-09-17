@@ -1,6 +1,7 @@
 import asyncio
 import math
 import os
+from contextlib import asynccontextmanager
 from typing import Callable
 import anthropic
 from tools.web_search import web_search as _web_search
@@ -14,9 +15,43 @@ from agents.researcher import researcher_prompt
 from agents.coder import coder_prompt
 from agents.critic import critic_prompt
 
-client = anthropic.AsyncAnthropic()
-
 MODEL_NAME = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-5")
+
+# LiteLLM base url 為主要路徑（可用來統一計費/路由多個 model provider）；
+# 沒設 LITELLM_BASE_URL 時完全退回原本只打官方 Anthropic API 的行為。
+LITELLM_BASE_URL = os.getenv("LITELLM_BASE_URL", "").strip()
+LITELLM_API_KEY = os.getenv("LITELLM_API_KEY", "").strip()
+LITELLM_MODEL = os.getenv("LITELLM_MODEL", MODEL_NAME)
+
+litellm_client = (
+    anthropic.AsyncAnthropic(base_url=LITELLM_BASE_URL, api_key=LITELLM_API_KEY)
+    if LITELLM_BASE_URL else None
+)
+anthropic_client = anthropic.AsyncAnthropic()  # 官方 API，讀 ANTHROPIC_API_KEY 環境變數
+
+
+@asynccontextmanager
+async def messages_stream(**kwargs):
+    """
+    優先透過 LiteLLM 呼叫；只有在建立連線這一步就失敗（尚未讀到任何回應內容，
+    例如 LiteLLM 整個掛掉、連不上、或回傳非 2xx）時，才 fallback 回官方 Anthropic key。
+    一旦已經開始收串流，後續錯誤直接往上拋，不重打一次，避免內容重複。
+    """
+    if litellm_client is not None:
+        manager = litellm_client.messages.stream(**{**kwargs, "model": LITELLM_MODEL})
+        try:
+            stream = await manager.__aenter__()
+        except Exception as e:
+            print(f"[orchestrator] LiteLLM（{LITELLM_BASE_URL}）連線失敗，改用官方 Anthropic API key：{e}")
+        else:
+            try:
+                yield stream
+            finally:
+                await manager.__aexit__(None, None, None)
+            return
+
+    async with anthropic_client.messages.stream(**{**kwargs, "model": MODEL_NAME}) as stream:
+        yield stream
 
 FRIDAY_SYSTEM_PROMPT = """你是 Friday，一個專為享受美好生活設計的 AI 個人助理。
 
@@ -185,8 +220,7 @@ async def run_agent(
         response_blocks = []
         tool_uses = []
 
-        async with client.messages.stream(
-            model=MODEL_NAME,
+        async with messages_stream(
             max_tokens=8096,
             system=system_prompt,
             thinking={"type": "adaptive", "display": "summarized"},

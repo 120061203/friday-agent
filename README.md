@@ -100,6 +100,13 @@ cp .env.example .env
 # 編輯 .env，填入你的 ANTHROPIC_API_KEY
 ```
 
+**選用：LiteLLM 為主、官方 API 為備援**
+
+在 `.env` 額外填入 `LITELLM_BASE_URL`（與選填的 `LITELLM_API_KEY`、`LITELLM_MODEL`）後，
+所有請求會優先打向 LiteLLM proxy；只有在**建立連線這一步就失敗**（LiteLLM 掛掉、連不上、回傳非 2xx）時，
+才自動 fallback 回上面的官方 `ANTHROPIC_API_KEY`。已經開始收串流之後才發生的錯誤不會重打，避免內容重複輸出。
+不設定 `LITELLM_BASE_URL` 時，行為與原本完全一樣。實作位置：`orchestrator.py` `messages_stream()`。
+
 ### 3. 啟動伺服器
 
 ```bash
