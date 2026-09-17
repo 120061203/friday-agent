@@ -276,7 +276,7 @@ Orchestrator 根據結果繼續判斷
 - Guardrail 目前是規則式判斷，換一種說法描述同一個危險操作可能繞過去；正式場景可以疊加一層 LLM 語意分類做第二道防線
 - 工單分類、稽核紀錄都是本地檔案模擬，沒有真的接 ITSM／SIEM 系統
 
-**部署踩坑記錄**：`runbooks/` 一開始放在 `data/runbooks/`，本機測試正常，但部署到 Zeabur 後 `search_runbook` 一直回報「尚未建立任何文件」，重新部署也無效。原因是 Zeabur 上為了讓 `data/profile.md`、`data/bento_history.md` 跨部署不丟失，掛了一個 persistent volume 在 `/app/data`；volume 會整個蓋掉映像檔裡同路徑的內容，`data/runbooks/` 雖然有進 git、有進 build，但容器實際看到的 `data/` 是空的 volume，不是 build 出來的內容。修法是把 `runbooks/` 移到 `data/` 之外（見上方專案結構），不受 volume 影響；`skills/devops-skill/references/` 因為本來就不在 `data/` 底下，沒受影響。用 `GET /debug/files`（`main.py`）可以直接看任何一個部署環境實際能讀到哪些檔案，排查這類問題不用再猜。
+**部署踩坑記錄**：`runbooks/` 一開始放在 `data/runbooks/`，本機測試正常，但部署到 Zeabur 後 `search_runbook` 一直回報「尚未建立任何文件」，重新部署也無效。原因是 Zeabur 上為了讓 `data/profile.md`、`data/bento_history.md` 跨部署不丟失，掛了一個 persistent volume 在 `/app/data`；volume 會整個蓋掉映像檔裡同路徑的內容，`data/runbooks/` 雖然有進 git、有進 build，但容器實際看到的 `data/` 是空的 volume，不是 build 出來的內容。修法是把 `runbooks/` 移到 `data/` 之外（見上方專案結構），不受 volume 影響；`skills/devops-skill/references/` 因為本來就不在 `data/` 底下，沒受影響。用 `GET /debug/files`（`main.py`）可以直接看任何一個部署環境實際能讀到哪些檔案，排查這類問題不用再猜。已在 `friday-agent.xsong.us` 上實際驗證：移出 `data/` 後 `runbooks/` 與 `skills/devops-skill/references/` 都正確顯示 `exists: true` 且檔案齊全。
 
 ---
 
@@ -306,6 +306,16 @@ Orchestrator 根據結果繼續判斷
 | `agent_done` | Sub-agent 完成 |
 | `done` | Orchestrator 完成，帶最終回答 |
 | `error` | 發生錯誤 |
+
+---
+
+## API 端點
+
+| 端點 | 說明 |
+|---|---|
+| `POST /run` | 執行任務，回傳 SSE 事件串流（見上方一覽） |
+| `GET` / `POST /profile` | 讀取／儲存 `data/profile.md` |
+| `GET /debug/files` | 診斷用：回報這個執行環境實際看到哪些知識庫/資料檔案（`runbooks/`、`skills/devops-skill/references/`、`data/profile.md`、`data/bento_history.md` 是否存在），只列檔名不回傳內容。用來排查「本機正常、部署環境讀不到檔案」這類問題（例如 persistent volume 掛載蓋掉映像檔內容），詳見上方「部署踩坑記錄」 |
 
 ---
 
