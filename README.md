@@ -163,7 +163,7 @@ http://localhost:8000
 
 > 核心位置：`orchestrator.py:9` tools 清單定義，`orchestrator.py:118` dispatch
 
-共 10 個 tools，由 Claude 自主決定何時呼叫。每個 agent 只會拿到自己職責範圍內的工具子集（見 `orchestrator.py` `AGENT_TOOLS`），而不是全部 10 個：
+共 11 個 tools，由 Claude 自主決定何時呼叫。每個 agent 只會拿到自己職責範圍內的工具子集（見 `orchestrator.py` `AGENT_TOOLS`），而不是全部 11 個：
 
 | Tool | 說明 | 實作位置 |
 |---|---|---|
@@ -175,7 +175,10 @@ http://localhost:8000
 | `execute_it_operation` | 模擬執行 IT 維運操作，經 Guardrail 攔截高風險指令並記錄稽核紀錄 | `tools/it_ops_guardrail.py` |
 | `search_runbook` | 在內部知識庫（`data/runbooks/`）搜尋問題排除步驟，簡化版 RAG（關鍵字比對，非向量檢索） | `tools/it_knowledge_base.py` |
 | `classify_ticket` | 模擬 ITSM 工單分類，判斷分派團隊與優先級（P1/P2/P3） | `tools/it_ticket_router.py` |
+| `search_devops_reference` | 在 `skills/devops-skill/references/` 知識庫搜尋 Vault/EKS/ArgoCD/LiteLLM proxy/CI/CD/RDS 參考文件 | `tools/devops_knowledge_base.py` |
 | `call_agent` | 呼叫專門的 sub-agent 處理複雜子任務 | `orchestrator.py` `tool_call_agent()` |
+
+`search_runbook` 與 `search_devops_reference` 底層共用同一套關鍵字重疊比對邏輯（`tools/markdown_search.py`），只是指向不同的文件目錄。
 
 **執行流程：**
 
@@ -228,6 +231,8 @@ Orchestrator 根據結果繼續判斷
 | `coder` | `agents/coder.py` | 撰寫解釋程式碼 |
 | `critic` | `agents/critic.py` | 審查回饋 |
 | `it_ops_advisor` | `agents/it_ops_advisor.py` | IT 維運操作審核（Guardrail）、內部知識庫問答、ITSM 工單分類 |
+| `devops_advisor` | `agents/devops_advisor.py` | DevOps 基礎設施諮詢（Vault/EKS/ArgoCD/LiteLLM proxy/CI/CD/RDS），知識來自 `skills/devops-skill/` |
+| `devops_request` | `agents/devops_request_advisor.py` | 整理 DevOps 基礎設施申請成 Jira 草稿（**草稿模式**，未串接真實 Jira/Atlassian API），規則來自 `skills/devops-request/` |
 
 **怎麼觀察 multi-agent 運作：**
 丟一個複合任務（例如「規劃台中週末行程，順便安排下週便當」），前端 **Agents 面板**會看到 `活動規劃` 和 `飲食顧問` 依序 active（橘色）→ done（綠色）。
@@ -271,6 +276,21 @@ Orchestrator 根據結果繼續判斷
 - 知識庫是關鍵字比對，不是真的向量檢索，量一大就會失準，正式場景要換成 Milvus/pgvector + embedding
 - Guardrail 目前是規則式判斷，換一種說法描述同一個危險操作可能繞過去；正式場景可以疊加一層 LLM 語意分類做第二道防線
 - 工單分類、稽核紀錄都是本地檔案模擬，沒有真的接 ITSM／SIEM 系統
+
+---
+
+## 把 Claude Code Skill 包裝成 Sub-agent
+
+`skills/` 底下放的是 Claude Code 原生格式的 skill（`SKILL.md` frontmatter + markdown），設計上是給 Claude Code 的 `Skill` 工具載入用的。Friday-Agent 的 `orchestrator.py` 是獨立的 Anthropic Messages API 迴圈，沒有 `Skill` 工具，所以不能直接「呼叫」這些 skill 物件，但可以轉換成等價的 sub-agent，做法固定分兩種：
+
+**A. 純知識庫類 skill**（例如 `skills/devops-skill/`）：
+1. 把 `SKILL.md` 的通用原則/既有背景轉成一個新 agent 的 system prompt（見 `agents/devops_advisor.py`）
+2. 幫 skill 的 `references/*.md` 接一個搜尋 tool —— 直接重用 `tools/markdown_search.py` 的 `search_markdown_dir()`，只要指定目錄跟 label 就好，不用重寫比對邏輯（見 `tools/devops_knowledge_base.py`）
+3. 在 `orchestrator.py` 註冊：`AGENT_PROMPTS`、`AGENT_TOOLS`、`tools` 清單裡加對應 schema、`call_agent` enum 加一行說明、`dispatch_tool` 加一個分支
+
+**B. 涉及外部系統寫入的 skill**（例如 `skills/devops-request/` 要建立 Jira ticket）：
+- 這類 skill 的流程/格式邏輯（欄位收集、草稿格式）可以照抄成 system prompt，但**不要順便把它會呼叫的外部 API/MCP 也接上**，除非你確認清楚後果 —— 尤其 Friday-Agent 的 `/run` 目前沒有身份驗證且公開部署，任何寫入外部系統（建立 ticket、發信、改資料庫）的能力接上去都等於暴露給任何打得到這個網址的人。
+- 目前 `devops_request` sub-agent（`agents/devops_request_advisor.py`）刻意做成**草稿模式**：只產出可貼到 Jira 的草稿文字，system prompt 裡明確禁止宣稱已建立 ticket。要接成真的會寫入 Jira，至少要先把 `/run` 的驗證補上，再考慮要不要串 Atlassian MCP。
 
 ---
 

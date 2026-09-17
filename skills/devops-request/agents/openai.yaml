@@ -1,0 +1,4 @@
+interface:
+  display_name: "DevOps Request"
+  short_description: "引導申請者產生 DevOps Jira 草稿，涵蓋 ECR、ECS、Secrets Manager、RDS、LiteLLM、Lambda"
+  default_prompt: "Use $devops-request to create a DevOps infrastructure request ticket."

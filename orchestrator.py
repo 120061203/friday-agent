@@ -11,6 +11,7 @@ from tools.bento_manager import read_bento_history as _read_bento_history, save_
 from tools.it_ops_guardrail import execute_it_operation as _execute_it_operation
 from tools.it_knowledge_base import search_runbook as _search_runbook
 from tools.it_ticket_router import classify_ticket as _classify_ticket
+from tools.devops_knowledge_base import search_devops_reference as _search_devops_reference
 from agents.event_planner import event_planner_prompt
 from agents.food_advisor import food_advisor_prompt
 from agents.local_scout import local_scout_prompt
@@ -18,6 +19,8 @@ from agents.researcher import researcher_prompt
 from agents.coder import coder_prompt
 from agents.critic import critic_prompt
 from agents.it_ops_advisor import it_ops_advisor_prompt
+from agents.devops_advisor import devops_advisor_prompt
+from agents.devops_request_advisor import devops_request_advisor_prompt
 
 MODEL_NAME = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-5")
 
@@ -66,6 +69,8 @@ FRIDAY_SYSTEM_PROMPT = """你是 Friday，一個專為享受美好生活設計�
 - 安排一週便當料理
 - 查詢最新電影與在地活動
 - 協助 IT 維運：高風險操作審核攔截、內部支援知識庫問答、工單分類與優先級判定
+- 協助 DevOps 諮詢：Vault、EKS、ArgoCD、LiteLLM proxy、CI/CD、RDS 等基礎設施問題
+- 協助整理 DevOps 基礎設施申請草稿（ECR/ECS/Secrets Manager/RDS/LiteLLM/Lambda），產出可貼到 Jira 的草稿（草稿模式，不會真的建立 ticket）
 
 回覆與思考過程請全程使用繁體中文。
 回覆請使用 Markdown 格式，讓內容清晰易讀。
@@ -182,6 +187,15 @@ tools = [
         }
     },
     {
+        "name": "search_devops_reference",
+        "description": "在 DevOps 基礎設施知識庫中搜尋參考文件，涵蓋 Vault、EKS、ArgoCD、LiteLLM proxy、CI/CD、RDS 等主題。",
+        "input_schema": {
+            "type": "object",
+            "properties": {"query": {"type": "string", "description": "要查詢的問題描述"}},
+            "required": ["query"]
+        }
+    },
+    {
         "name": "call_agent",
         "description": "呼叫專門的 sub-agent 處理特定任務，並取得該 agent 產出的完整結果。單次、簡單的查詢請直接呼叫 web_search，不需要透過 sub-agent。",
         "input_schema": {
@@ -189,7 +203,7 @@ tools = [
             "properties": {
                 "agent_name": {
                     "type": "string",
-                    "enum": ["event_planner", "food_advisor", "local_scout", "researcher", "coder", "critic", "it_ops_advisor"],
+                    "enum": ["event_planner", "food_advisor", "local_scout", "researcher", "coder", "critic", "it_ops_advisor", "devops_advisor", "devops_request"],
                     "description": (
                         "依任務性質選擇對應的 sub-agent：\n"
                         "- event_planner：規劃週五下班後到週日晚的完整活動行程（需整合多天、多活動）\n"
@@ -198,7 +212,9 @@ tools = [
                         "- researcher：一般性資訊蒐集與摘要，不屬於上述生活場景類任務\n"
                         "- coder：撰寫或解釋程式碼\n"
                         "- critic：審查既有內容（程式碼、文章、計畫）並提出具體改進建議\n"
-                        "- it_ops_advisor：IT 維運操作（需 Guardrail 審核）、內部支援知識庫問答、ITSM 工單分類"
+                        "- it_ops_advisor：IT 維運操作（需 Guardrail 審核）、內部支援知識庫問答、ITSM 工單分類\n"
+                        "- devops_advisor：Vault/EKS/ArgoCD/LiteLLM proxy/CI/CD/RDS 等基礎設施問題諮詢\n"
+                        "- devops_request：整理 DevOps 基礎設施申請（ECR/ECS/Secrets Manager/RDS/LiteLLM/Lambda）成 Jira 草稿（草稿模式，不會真的建立 ticket）"
                     )
                 },
                 "task": {"type": "string", "description": "交給 sub-agent 的完整任務描述，包含相關 context"}
@@ -219,6 +235,8 @@ AGENT_TOOLS = {
     "coder": ["calculator"],
     "critic": [],
     "it_ops_advisor": ["execute_it_operation", "search_runbook", "classify_ticket"],
+    "devops_advisor": ["search_devops_reference"],
+    "devops_request": ["get_current_time"],
 }
 
 AGENT_PROMPTS = {
@@ -229,6 +247,8 @@ AGENT_PROMPTS = {
     "coder": coder_prompt,
     "critic": critic_prompt,
     "it_ops_advisor": it_ops_advisor_prompt,
+    "devops_advisor": devops_advisor_prompt,
+    "devops_request": devops_request_advisor_prompt,
 }
 
 
@@ -371,6 +391,9 @@ async def dispatch_tool(name: str, input: dict, emit, agent_name: str, parent_sy
 
     elif name == "classify_ticket":
         return await _classify_ticket(input["title"], input["content"])
+
+    elif name == "search_devops_reference":
+        return await _search_devops_reference(input["query"])
 
     elif name == "call_agent":
         return await tool_call_agent(

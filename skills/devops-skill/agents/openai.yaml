@@ -1,0 +1,4 @@
+interface:
+  display_name: "DevOps Infra Knowledge"
+  short_description: "DevOps 基礎設施知識庫，涵蓋 EKS、Vault、ArgoCD、LiteLLM、CI/CD 與 RDS"
+  default_prompt: "Use $devops-skill to answer questions about this DevOps infrastructure."
