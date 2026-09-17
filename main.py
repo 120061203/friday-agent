@@ -93,7 +93,7 @@ async def debug_files():
     return {
         "cwd": os.getcwd(),
         "base_dir": base_dir,
-        "data/runbooks": describe("data/runbooks"),
+        "runbooks": describe("runbooks"),
         "skills/devops-skill/references": describe("skills/devops-skill/references"),
         "data/profile.md exists": os.path.exists(os.path.join(base_dir, "data", "profile.md")),
         "data/bento_history.md exists": os.path.exists(os.path.join(base_dir, "data", "bento_history.md")),

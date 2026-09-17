@@ -82,8 +82,7 @@ friday-agent/
 │   ├── coder.py           # 程式碼 agent
 │   ├── critic.py          # 審查 agent
 │   └── it_ops_advisor.py  # IT 維運顧問 agent（Guardrail / 知識庫 / 工單分類）
-├── data/
-│   └── runbooks/          # 內部 IT 支援知識庫範例文件
+├── runbooks/               # 內部 IT 支援知識庫範例文件（刻意不放在 data/ 底下，見下方說明）
 └── frontend/
     └── index.html       # 視覺化 UI，含快捷按鈕與 Markdown 渲染
 ```
@@ -173,7 +172,7 @@ http://localhost:8000
 | `save_bento_plan` / `read_bento_history` | 讀寫便當計畫歷史 | `tools/bento_manager.py` |
 | `calculator` | 安全數學計算，支援 math 模組 | `tools/calculator.py` |
 | `execute_it_operation` | 模擬執行 IT 維運操作，經 Guardrail 攔截高風險指令並記錄稽核紀錄 | `tools/it_ops_guardrail.py` |
-| `search_runbook` | 在內部知識庫（`data/runbooks/`）搜尋問題排除步驟，簡化版 RAG（關鍵字比對，非向量檢索） | `tools/it_knowledge_base.py` |
+| `search_runbook` | 在內部知識庫（`runbooks/`）搜尋問題排除步驟，簡化版 RAG（關鍵字比對，非向量檢索） | `tools/it_knowledge_base.py` |
 | `classify_ticket` | 模擬 ITSM 工單分類，判斷分派團隊與優先級（P1/P2/P3） | `tools/it_ticket_router.py` |
 | `search_devops_reference` | 在 `skills/devops-skill/references/` 知識庫搜尋 Vault/EKS/ArgoCD/LiteLLM proxy/CI/CD/RDS 參考文件 | `tools/devops_knowledge_base.py` |
 | `call_agent` | 呼叫專門的 sub-agent 處理複雜子任務 | `orchestrator.py` `tool_call_agent()` |
@@ -267,7 +266,7 @@ Orchestrator 根據結果繼續判斷
 | 情境 | 對應 Tool | 示範重點 |
 |---|---|---|
 | 🚫 危險指令攔截 | `execute_it_operation` | 故意下一個「刪除 XX 資料庫」指令，Guardrail 偵測到高風險操作（刪除／重置密碼／重啟服務／格式化等動詞 + 資料庫／帳號／服務等名詞的組合）直接攔截，寫入 `data/it_ops_audit.md` 稽核紀錄，不會真的「執行」 |
-| 🖥 IT 知識庫問答 | `search_runbook` | 在 `data/runbooks/` 幾份範例 runbook 裡用關鍵字重疊比對找出最相關文件，回覆時附上來源檔名引用 —— 簡化版 RAG（沒有真的接 Milvus / embedding） |
+| 🖥 IT 知識庫問答 | `search_runbook` | 在 `runbooks/` 幾份範例 runbook 裡用關鍵字重疊比對找出最相關文件，回覆時附上來源檔名引用 —— 簡化版 RAG（沒有真的接 Milvus / embedding） |
 | 📋 工單分類 | `classify_ticket` | 依標題與內容關鍵字判斷分派團隊與優先級（P1/P2/P3），模擬 ITSM 分類引擎 |
 
 **Guardrail 判斷邏輯**（`tools/it_ops_guardrail.py` `_is_high_risk()`）：hardcode 關鍵字比對，而非另外呼叫 LLM 做語意判斷 —— 換取現場 demo 100% 可預測、不會因語意判斷不穩定而失手。判斷方式是「高風險動詞（刪除/重置/重啟/格式化…）」與「高風險名詞（資料庫/密碼/帳號/服務…）」是否同時出現在 `action` + `target` 合併文字中，而不是只檢查其中一個欄位（實測時發現只檢查 `action` 會漏判 — 例如 `action="刪除"`、`target="HR 部門員工資料庫"`）。
@@ -276,6 +275,8 @@ Orchestrator 根據結果繼續判斷
 - 知識庫是關鍵字比對，不是真的向量檢索，量一大就會失準，正式場景要換成 Milvus/pgvector + embedding
 - Guardrail 目前是規則式判斷，換一種說法描述同一個危險操作可能繞過去；正式場景可以疊加一層 LLM 語意分類做第二道防線
 - 工單分類、稽核紀錄都是本地檔案模擬，沒有真的接 ITSM／SIEM 系統
+
+**部署踩坑記錄**：`runbooks/` 一開始放在 `data/runbooks/`，本機測試正常，但部署到 Zeabur 後 `search_runbook` 一直回報「尚未建立任何文件」，重新部署也無效。原因是 Zeabur 上為了讓 `data/profile.md`、`data/bento_history.md` 跨部署不丟失，掛了一個 persistent volume 在 `/app/data`；volume 會整個蓋掉映像檔裡同路徑的內容，`data/runbooks/` 雖然有進 git、有進 build，但容器實際看到的 `data/` 是空的 volume，不是 build 出來的內容。修法是把 `runbooks/` 移到 `data/` 之外（見上方專案結構），不受 volume 影響；`skills/devops-skill/references/` 因為本來就不在 `data/` 底下，沒受影響。用 `GET /debug/files`（`main.py`）可以直接看任何一個部署環境實際能讀到哪些檔案，排查這類問題不用再猜。
 
 ---
 
