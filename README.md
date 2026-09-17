@@ -65,18 +65,25 @@ friday-agent/
 ├── orchestrator.py      # Agent 核心：決策迴圈、tool dispatch、multi-agent
 ├── profile.md           # 使用者偏好記憶庫（可直接編輯）
 ├── tools/
-│   ├── web_search.py    # DuckDuckGo 真實搜尋
-│   ├── calculator.py    # 數學計算
-│   ├── current_time.py  # 取得目前時間
-│   ├── file_read.py     # 讀取本地檔案
-│   └── profile_manager.py  # 讀寫 profile.md
+│   ├── web_search.py       # DuckDuckGo 真實搜尋
+│   ├── calculator.py       # 數學計算
+│   ├── current_time.py     # 取得目前時間
+│   ├── file_read.py        # 讀取本地檔案
+│   ├── profile_manager.py  # 讀寫 profile.md
+│   ├── bento_manager.py    # 讀寫便當計畫歷史
+│   ├── it_ops_guardrail.py # IT 維運高風險操作攔截 + 稽核紀錄
+│   ├── it_knowledge_base.py# 內部 runbook 知識庫搜尋（簡化版 RAG）
+│   └── it_ticket_router.py # ITSM 工單分類 / 優先級判定
 ├── agents/
-│   ├── event_planner.py # 週末活動規劃 agent
-│   ├── food_advisor.py  # 餐廳推薦 + 便當計畫 agent
-│   ├── local_scout.py   # 在地活動 + 電影查詢 agent
-│   ├── researcher.py    # 資訊研究 agent
-│   ├── coder.py         # 程式碼 agent
-│   └── critic.py        # 審查 agent
+│   ├── event_planner.py   # 週末活動規劃 agent
+│   ├── food_advisor.py    # 餐廳推薦 + 便當計畫 agent
+│   ├── local_scout.py     # 在地活動 + 電影查詢 agent
+│   ├── researcher.py      # 資訊研究 agent
+│   ├── coder.py           # 程式碼 agent
+│   ├── critic.py          # 審查 agent
+│   └── it_ops_advisor.py  # IT 維運顧問 agent（Guardrail / 知識庫 / 工單分類）
+├── data/
+│   └── runbooks/          # 內部 IT 支援知識庫範例文件
 └── frontend/
     └── index.html       # 視覺化 UI，含快捷按鈕與 Markdown 渲染
 ```
@@ -156,15 +163,19 @@ http://localhost:8000
 
 > 核心位置：`orchestrator.py:9` tools 清單定義，`orchestrator.py:118` dispatch
 
-共 5 個 tools，由 Claude 自主決定何時呼叫：
+共 10 個 tools，由 Claude 自主決定何時呼叫。每個 agent 只會拿到自己職責範圍內的工具子集（見 `orchestrator.py` `AGENT_TOOLS`），而不是全部 10 個：
 
 | Tool | 說明 | 實作位置 |
 |---|---|---|
 | `web_search` | DuckDuckGo 真實搜尋，查活動、餐廳、電影 | `tools/web_search.py` |
 | `get_current_time` | 取得目前日期時間，確保推薦的是未來活動 | `tools/current_time.py` |
 | `update_profile` | 更新 profile.md 中的歷史記錄欄位 | `tools/profile_manager.py` |
+| `save_bento_plan` / `read_bento_history` | 讀寫便當計畫歷史 | `tools/bento_manager.py` |
 | `calculator` | 安全數學計算，支援 math 模組 | `tools/calculator.py` |
-| `call_agent` | 呼叫專門的 sub-agent 處理複雜子任務 | `orchestrator.py:131` |
+| `execute_it_operation` | 模擬執行 IT 維運操作，經 Guardrail 攔截高風險指令並記錄稽核紀錄 | `tools/it_ops_guardrail.py` |
+| `search_runbook` | 在內部知識庫（`data/runbooks/`）搜尋問題排除步驟，簡化版 RAG（關鍵字比對，非向量檢索） | `tools/it_knowledge_base.py` |
+| `classify_ticket` | 模擬 ITSM 工單分類，判斷分派團隊與優先級（P1/P2/P3） | `tools/it_ticket_router.py` |
+| `call_agent` | 呼叫專門的 sub-agent 處理複雜子任務 | `orchestrator.py` `tool_call_agent()` |
 
 **執行流程：**
 
@@ -216,6 +227,7 @@ Orchestrator 根據結果繼續判斷
 | `researcher` | `agents/researcher.py` | 搜尋整理資訊 |
 | `coder` | `agents/coder.py` | 撰寫解釋程式碼 |
 | `critic` | `agents/critic.py` | 審查回饋 |
+| `it_ops_advisor` | `agents/it_ops_advisor.py` | IT 維運操作審核（Guardrail）、內部知識庫問答、ITSM 工單分類 |
 
 **怎麼觀察 multi-agent 運作：**
 丟一個複合任務（例如「規劃台中週末行程，順便安排下週便當」），前端 **Agents 面板**會看到 `活動規劃` 和 `飲食顧問` 依序 active（橘色）→ done（綠色）。
@@ -236,6 +248,29 @@ Orchestrator 根據結果繼續判斷
 - [x] **`call_agent` 的 `agent_name` 補上職責邊界說明**：在 `input_schema` 的 enum 旁加上每個 sub-agent 的適用場景描述，讓 Claude 更準確判斷該委派給誰，也讓長期沒有路由入口的 `coder`／`critic` 有明確的觸發場景。
 - [ ] call_agent 遞迴深度保護（目前用工具子集間接擋掉，尚未有明確的 max-depth 機制）
 - [ ] `call_agent` 單獨呼叫才會直接回傳 sub-agent 完整結果的 shortcut（`orchestrator.py` 第 227 行附近），與其他 tool 混用時會被上層 model 再摘要一次，格式可能跑掉
+
+---
+
+## IT Ops Advisor（企業 IT 維運情境 Demo）
+
+> 核心位置：`agents/it_ops_advisor.py`、`tools/it_ops_guardrail.py`、`tools/it_knowledge_base.py`、`tools/it_ticket_router.py`
+
+在原本「生活助理」的架構上，新增一個 IT 維運情境的 sub-agent，重用既有的 UI／SSE／multi-agent 骨架，只新增 tool 與 agent，用來展示「AI Agent 安全治理」與「內部知識庫問答」這類企業 IT 場景。
+
+**三個模擬情境（前端有對應的快捷按鈕）：**
+
+| 情境 | 對應 Tool | 示範重點 |
+|---|---|---|
+| 🚫 危險指令攔截 | `execute_it_operation` | 故意下一個「刪除 XX 資料庫」指令，Guardrail 偵測到高風險操作（刪除／重置密碼／重啟服務／格式化等動詞 + 資料庫／帳號／服務等名詞的組合）直接攔截，寫入 `data/it_ops_audit.md` 稽核紀錄，不會真的「執行」 |
+| 🖥 IT 知識庫問答 | `search_runbook` | 在 `data/runbooks/` 幾份範例 runbook 裡用關鍵字重疊比對找出最相關文件，回覆時附上來源檔名引用 —— 簡化版 RAG（沒有真的接 Milvus / embedding） |
+| 📋 工單分類 | `classify_ticket` | 依標題與內容關鍵字判斷分派團隊與優先級（P1/P2/P3），模擬 ITSM 分類引擎 |
+
+**Guardrail 判斷邏輯**（`tools/it_ops_guardrail.py` `_is_high_risk()`）：hardcode 關鍵字比對，而非另外呼叫 LLM 做語意判斷 —— 換取現場 demo 100% 可預測、不會因語意判斷不穩定而失手。判斷方式是「高風險動詞（刪除/重置/重啟/格式化…）」與「高風險名詞（資料庫/密碼/帳號/服務…）」是否同時出現在 `action` + `target` 合併文字中，而不是只檢查其中一個欄位（實測時發現只檢查 `action` 會漏判 — 例如 `action="刪除"`、`target="HR 部門員工資料庫"`）。
+
+**已知取捨（面試被問到可以直接誠實講）：**
+- 知識庫是關鍵字比對，不是真的向量檢索，量一大就會失準，正式場景要換成 Milvus/pgvector + embedding
+- Guardrail 目前是規則式判斷，換一種說法描述同一個危險操作可能繞過去；正式場景可以疊加一層 LLM 語意分類做第二道防線
+- 工單分類、稽核紀錄都是本地檔案模擬，沒有真的接 ITSM／SIEM 系統
 
 ---
 

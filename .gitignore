@@ -5,3 +5,9 @@ __pycache__/
 .DS_Store
 data/profile.md
 data/bento_history.md
+data/it_ops_audit.md
+
+# 面試準備素材（含求職隱私內容，不進 public repo）
+mediatek_agent.md
+interview.md
+MediaTek_IT_AI_Proposal.pptx

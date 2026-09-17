@@ -8,12 +8,16 @@ from tools.web_search import web_search as _web_search
 from tools.current_time import get_current_time as _get_current_time
 from tools.profile_manager import read_profile, update_profile as _update_profile
 from tools.bento_manager import read_bento_history as _read_bento_history, save_bento_plan as _save_bento_plan
+from tools.it_ops_guardrail import execute_it_operation as _execute_it_operation
+from tools.it_knowledge_base import search_runbook as _search_runbook
+from tools.it_ticket_router import classify_ticket as _classify_ticket
 from agents.event_planner import event_planner_prompt
 from agents.food_advisor import food_advisor_prompt
 from agents.local_scout import local_scout_prompt
 from agents.researcher import researcher_prompt
 from agents.coder import coder_prompt
 from agents.critic import critic_prompt
+from agents.it_ops_advisor import it_ops_advisor_prompt
 
 MODEL_NAME = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-5")
 
@@ -61,6 +65,7 @@ FRIDAY_SYSTEM_PROMPT = """你是 Friday，一個專為享受美好生活設計�
 - 規劃週五下班後到週日晚的完整行程
 - 安排一週便當料理
 - 查詢最新電影與在地活動
+- 協助 IT 維運：高風險操作審核攔截、內部支援知識庫問答、工單分類與優先級判定
 
 回覆與思考過程請全程使用繁體中文。
 回覆請使用 Markdown 格式，讓內容清晰易讀。
@@ -144,6 +149,39 @@ tools = [
         }
     },
     {
+        "name": "execute_it_operation",
+        "description": "模擬執行一項 IT 維運操作（重啟服務、重置密碼、刪除帳號、資料庫操作等）。執行前會先經過 Guardrail policy check，高風險操作會被攔截並記錄稽核紀錄。",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "action": {"type": "string", "description": "要執行的操作，例如「重置密碼」「重啟服務」「刪除資料庫」"},
+                "target": {"type": "string", "description": "操作對象，例如帳號名稱、服務名稱、資料庫名稱"}
+            },
+            "required": ["action", "target"]
+        }
+    },
+    {
+        "name": "search_runbook",
+        "description": "在內部 IT 支援知識庫（runbook）中搜尋問題排除步驟，例如 VPN 異常、系統當機、帳號鎖定。",
+        "input_schema": {
+            "type": "object",
+            "properties": {"query": {"type": "string", "description": "要查詢的問題描述"}},
+            "required": ["query"]
+        }
+    },
+    {
+        "name": "classify_ticket",
+        "description": "模擬 ITSM 工單分類：依標題與內容判斷應分派的團隊與優先級（P1/P2/P3）。",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string", "description": "工單標題"},
+                "content": {"type": "string", "description": "工單內容"}
+            },
+            "required": ["title", "content"]
+        }
+    },
+    {
         "name": "call_agent",
         "description": "呼叫專門的 sub-agent 處理特定任務，並取得該 agent 產出的完整結果。單次、簡單的查詢請直接呼叫 web_search，不需要透過 sub-agent。",
         "input_schema": {
@@ -151,7 +189,7 @@ tools = [
             "properties": {
                 "agent_name": {
                     "type": "string",
-                    "enum": ["event_planner", "food_advisor", "local_scout", "researcher", "coder", "critic"],
+                    "enum": ["event_planner", "food_advisor", "local_scout", "researcher", "coder", "critic", "it_ops_advisor"],
                     "description": (
                         "依任務性質選擇對應的 sub-agent：\n"
                         "- event_planner：規劃週五下班後到週日晚的完整活動行程（需整合多天、多活動）\n"
@@ -159,7 +197,8 @@ tools = [
                         "- local_scout：查詢單一城市近期的活動、展覽、電影、市集（不需跨天整合行程）\n"
                         "- researcher：一般性資訊蒐集與摘要，不屬於上述生活場景類任務\n"
                         "- coder：撰寫或解釋程式碼\n"
-                        "- critic：審查既有內容（程式碼、文章、計畫）並提出具體改進建議"
+                        "- critic：審查既有內容（程式碼、文章、計畫）並提出具體改進建議\n"
+                        "- it_ops_advisor：IT 維運操作（需 Guardrail 審核）、內部支援知識庫問答、ITSM 工單分類"
                     )
                 },
                 "task": {"type": "string", "description": "交給 sub-agent 的完整任務描述，包含相關 context"}
@@ -179,6 +218,7 @@ AGENT_TOOLS = {
     "researcher": ["web_search"],
     "coder": ["calculator"],
     "critic": [],
+    "it_ops_advisor": ["execute_it_operation", "search_runbook", "classify_ticket"],
 }
 
 AGENT_PROMPTS = {
@@ -188,6 +228,7 @@ AGENT_PROMPTS = {
     "researcher": researcher_prompt,
     "coder": coder_prompt,
     "critic": critic_prompt,
+    "it_ops_advisor": it_ops_advisor_prompt,
 }
 
 
@@ -321,6 +362,15 @@ async def dispatch_tool(name: str, input: dict, emit, agent_name: str, parent_sy
             return str(eval(input["expression"], allowed))
         except Exception as e:
             return f"計算錯誤：{e}"
+
+    elif name == "execute_it_operation":
+        return await _execute_it_operation(input["action"], input["target"])
+
+    elif name == "search_runbook":
+        return await _search_runbook(input["query"])
+
+    elif name == "classify_ticket":
+        return await _classify_ticket(input["title"], input["content"])
 
     elif name == "call_agent":
         return await tool_call_agent(
