@@ -335,6 +335,7 @@
       <div class="panel-header result-header">
         <h3>回答</h3>
         <div class="download-actions">
+          <button class="dl-btn" id="copy-btn" onclick="copyPlainText()" disabled>複製內容</button>
           <button class="dl-btn" id="dl-md-btn" onclick="downloadMarkdown()" disabled>下載 .md</button>
           <button class="dl-btn" id="dl-html-btn" onclick="downloadHtml()" disabled>下載 .html</button>
         </div>
@@ -506,6 +507,7 @@ function handleEvent(type, data) {
 
     lastResultMarkdown = data.result || '';
     const hasResult = !!lastResultMarkdown.trim();
+    document.getElementById('copy-btn').disabled = !hasResult;
     document.getElementById('dl-md-btn').disabled = !hasResult;
     document.getElementById('dl-html-btn').disabled = !hasResult;
   }
@@ -539,6 +541,25 @@ function triggerDownload(filename, content, mimeType) {
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+}
+
+async function copyPlainText() {
+  if (!lastResultMarkdown.trim()) return;
+  const plainText = document.getElementById('result-panel').innerText;
+  const btn = document.getElementById('copy-btn');
+  try {
+    await navigator.clipboard.writeText(plainText);
+  } catch (err) {
+    const textarea = document.createElement('textarea');
+    textarea.value = plainText;
+    document.body.appendChild(textarea);
+    textarea.select();
+    document.execCommand('copy');
+    document.body.removeChild(textarea);
+  }
+  const originalText = btn.textContent;
+  btn.textContent = '已複製 ✓';
+  setTimeout(() => { btn.textContent = originalText; }, 1500);
 }
 
 function downloadMarkdown() {
