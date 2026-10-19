@@ -278,15 +278,25 @@ async def run_agent(
     agent_tools = tools_for_agent(agent_name)
 
     for _round in range(MAX_ROUNDS):
+        is_last_round = _round == MAX_ROUNDS - 1
         response_blocks = []
         tool_uses = []
+
+        # 最後一輪不給 tools，逼模型只能根據目前已蒐集的資訊直接產出最終答案，
+        # 避免它又發起一次工具呼叫，結果輪次用完、這輪思考全部浪費。
+        round_messages = messages
+        if is_last_round:
+            round_messages = messages + [{
+                "role": "user",
+                "content": "已達最後一輪可用次數，請不要再呼叫任何工具，直接根據目前已經蒐集到的所有資訊，整理並輸出最終完整答案。"
+            }]
 
         async with messages_stream(
             max_tokens=8096,
             system=system_prompt,
             thinking={"type": "adaptive", "display": "summarized"},
-            tools=agent_tools,
-            messages=messages
+            tools=[] if is_last_round else agent_tools,
+            messages=round_messages
         ) as stream:
             async for event in stream:
                 etype = getattr(event, "type", None)
