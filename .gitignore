@@ -3,6 +3,11 @@ venv/
 __pycache__/
 *.pyc
 .DS_Store
+
+# Cloudflare Workers / Wrangler
+node_modules/
+.wrangler/
+worker-configuration.d.ts
 data/profile.md
 data/bento_history.md
 data/it_ops_audit.md

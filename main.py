@@ -71,6 +71,11 @@ async def run(request: Request, body: RunRequest):
     )
 
 
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
+
+
 @app.get("/debug/files")
 async def debug_files():
     """

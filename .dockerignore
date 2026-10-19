@@ -4,3 +4,13 @@ __pycache__/
 *.pyc
 .DS_Store
 .git/
+
+# Worker/Wrangler 相關檔案不需要進 Python container image
+node_modules/
+.wrangler/
+src/
+wrangler.jsonc
+package.json
+package-lock.json
+tsconfig.json
+worker-configuration.d.ts
