@@ -24,6 +24,10 @@ from agents.devops_request_advisor import devops_request_advisor_prompt
 
 MODEL_NAME = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-5")
 
+# 控制 adaptive thinking 的思考量（thinking tokens 算 output，單價是 input 的 5 倍，
+# 預設不設定的話模型會自行決定想多久，容易失控）。可用 low/medium/high/xhigh/max。
+AGENT_EFFORT = os.getenv("AGENT_EFFORT", "medium")
+
 # LiteLLM base url 為主要路徑（可用來統一計費/路由多個 model provider）；
 # 沒設 LITELLM_BASE_URL 時完全退回原本只打官方 Anthropic API 的行為。
 LITELLM_BASE_URL = os.getenv("LITELLM_BASE_URL", "").strip()
@@ -295,6 +299,8 @@ async def run_agent(
             max_tokens=8096,
             system=system_prompt,
             thinking={"type": "adaptive", "display": "summarized"},
+            output_config={"effort": AGENT_EFFORT},
+            cache_control={"type": "ephemeral"},
             tools=[] if is_last_round else agent_tools,
             messages=round_messages
         ) as stream:
